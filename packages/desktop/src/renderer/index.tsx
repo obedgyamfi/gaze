@@ -246,6 +246,13 @@ const createPlatform = (): Platform => {
 
     parseMarkdown: (markdown: string) => window.api.parseMarkdownCommand(markdown),
 
+    browser: {
+      launch: (opts) => window.api.browser.launch(opts),
+      close: () => window.api.browser.close(),
+      status: () => window.api.browser.status(),
+      subscribe: (cb) => window.api.browser.subscribe(cb),
+    },
+
     webviewZoom,
 
     getPinchZoomEnabled: () => window.api.getPinchZoomEnabled(),

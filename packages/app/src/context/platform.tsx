@@ -103,6 +103,9 @@ type PlatformBase = {
   /** Read image from clipboard (desktop only) */
   readClipboardImage?(): Promise<File | null>
 
+  /** Spawn and control an external Chromium-based browser for capture (desktop only) */
+  browser?: BrowserPlatform
+
   /** Export collected diagnostic logs (desktop only) */
   exportDebugLogs?(): Promise<string>
 
@@ -121,6 +124,21 @@ export type Platform = PlatformBase &
   )
 
 export type DisplayBackend = "auto" | "wayland"
+
+export type BrowserStatus = {
+  running: boolean
+  pid?: number
+  port?: number
+  url?: string
+  executable?: string
+}
+
+export type BrowserPlatform = {
+  launch(opts?: { url?: string }): Promise<BrowserStatus>
+  close(): Promise<void>
+  status(): Promise<BrowserStatus>
+  subscribe(cb: (status: BrowserStatus) => void): () => void
+}
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({
   name: "Platform",

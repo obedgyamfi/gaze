@@ -12,6 +12,7 @@ import { getStore } from "./store"
 import { getPinchZoomEnabled, setPinchZoomEnabled, setTitlebar, updateTitlebar } from "./windows"
 import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
+import { BrowserController } from "./browser"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -39,9 +40,27 @@ type Deps = {
   recordFatalRendererError: (error: FatalRendererError) => Promise<void> | void
 }
 
+const browserController = new BrowserController()
+
 export function registerIpcHandlers(deps: Deps) {
   const updaterSubscriptions = createUpdaterSubscriptions()
   app.once("will-quit", updaterSubscriptions.clear)
+
+  ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, opts?: { url?: string }) =>
+    browserController.launch(opts),
+  )
+  ipcMain.handle("browser-close", () => browserController.close())
+  ipcMain.handle("browser-status", () => browserController.getStatus())
+  ipcMain.handle("browser-subscribe", (event) => {
+    const dispose = browserController.subscribe((status) => {
+      if (event.sender.isDestroyed()) {
+        dispose()
+        return
+      }
+      event.sender.send("browser-status", status)
+    })
+    event.sender.once("destroyed", dispose)
+  })
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())
   ipcMain.handle("await-initialization", () => deps.awaitInitialization())

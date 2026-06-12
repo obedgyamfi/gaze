@@ -28,6 +28,20 @@ export type UpdaterAPI = {
   install: () => Promise<void>
 }
 
+export type BrowserStatus = {
+  running: boolean
+  pid?: number
+  port?: number
+  url?: string
+  executable?: string
+}
+export type BrowserAPI = {
+  launch: (opts?: { url?: string }) => Promise<BrowserStatus>
+  close: () => Promise<void>
+  status: () => Promise<BrowserStatus>
+  subscribe: (cb: (status: BrowserStatus) => void) => () => void
+}
+
 export type LinuxDisplayBackend = "wayland" | "auto"
 export type TitlebarTheme = {
   mode: "light" | "dark"
@@ -46,6 +60,7 @@ export type ElectronAPI = {
   awaitInitialization: () => Promise<ServerReadyData>
   wslServers: WslServersAPI
   updater: UpdaterAPI
+  browser: BrowserAPI
   consumeInitialDeepLinks: () => Promise<string[]>
   getDefaultServerUrl: () => Promise<string | null>
   setDefaultServerUrl: (url: string | null) => Promise<void>
