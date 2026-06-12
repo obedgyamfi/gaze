@@ -7,6 +7,7 @@ import {
   createSessionTabs,
   focusTerminalById,
   getTabReorderIndex,
+  shouldApplyTabChange,
   shouldFocusTerminalOnKeyDown,
   shouldShowFileTree,
 } from "./helpers"
@@ -113,6 +114,56 @@ describe("shouldFocusTerminalOnKeyDown", () => {
   test("keeps plain typing focused on terminal", () => {
     expect(shouldFocusTerminalOnKeyDown(new KeyboardEvent("keydown", { key: "a" }))).toBe(true)
     expect(shouldFocusTerminalOnKeyDown(new KeyboardEvent("keydown", { key: "A", shiftKey: true }))).toBe(true)
+  })
+})
+
+describe("shouldApplyTabChange", () => {
+  const opened = ["gaze://graph", "gaze://proxy"]
+
+  test("applies a real user click switching between open tabs", () => {
+    // active is Graph, user clicks Proxy
+    expect(
+      shouldApplyTabChange({
+        value: "gaze://proxy",
+        intended: "gaze://graph",
+        openedTabs: opened,
+        recentUserIntent: true,
+      }),
+    ).toBe(true)
+  })
+
+  test("ignores Kobalte's reconcile correction to Review when no user interaction", () => {
+    // a tool tab was just opened from the module tree; Kobalte fires onChange("review")
+    expect(
+      shouldApplyTabChange({
+        value: "review",
+        intended: "gaze://proxy",
+        openedTabs: opened,
+        recentUserIntent: false,
+      }),
+    ).toBe(false)
+  })
+
+  test("applies when the change matches the intended tab", () => {
+    expect(
+      shouldApplyTabChange({
+        value: "gaze://graph",
+        intended: "gaze://graph",
+        openedTabs: opened,
+        recentUserIntent: false,
+      }),
+    ).toBe(true)
+  })
+
+  test("applies when the intended tab is no longer a valid open tab", () => {
+    expect(
+      shouldApplyTabChange({
+        value: "review",
+        intended: "gaze://closed",
+        openedTabs: opened,
+        recentUserIntent: false,
+      }),
+    ).toBe(true)
   })
 })
 

@@ -28,6 +28,7 @@ import {
   createOpenSessionFileTab,
   createSessionTabs,
   getTabReorderIndex,
+  shouldApplyTabChange,
   shouldShowFileTree,
   type Sizing,
 } from "@/pages/session/helpers"
@@ -160,14 +161,30 @@ export function SessionSidePanel(props: {
   const contextOpen = tabState.contextOpen
   const openedTabs = tabState.openedTabs
   const activeTab = tabState.activeTab
-  const activeFileTab = tabState.activeFileTab
-  const activeGazeTab = () => {
-    const tab = activeFileTab()
-    return tab && isGazeTab(tab) ? tab : undefined
+
+  // Kobalte's Tabs runs a reconcile effect that, whenever the controlled active
+  // value has no trigger registered in its DOM collection yet, "corrects" the
+  // selection to the first trigger (Review) and fires onChange. That happens for
+  // a beat when a gaze tool tab is opened from outside the Tabs (the module tree)
+  // before its trigger mounts. We must not persist that non-user correction, or
+  // it overwrites the intended tab in the store. Distinguish a genuine click /
+  // keypress on the tab list (which sets a recent timestamp) from the reconcile
+  // (which fires with no preceding tab-list interaction). A timestamp window is
+  // used rather than a boolean because onChange may fire a tick after the DOM
+  // event, once Solid flushes Kobalte's selection effect.
+  let lastUserTabIntent = 0
+  const markUserTabIntent = () => {
+    lastUserTabIntent = performance.now()
   }
-  const activePlainFileTab = () => {
-    const tab = activeFileTab()
-    return tab && !isGazeTab(tab) ? tab : undefined
+  const onTabChange = (value: string) => {
+    const apply = shouldApplyTabChange({
+      value,
+      intended: tabs().active(),
+      openedTabs: openedTabs(),
+      recentUserIntent: performance.now() - lastUserTabIntent < 200,
+    })
+    if (!apply) return
+    openTab(value)
   }
 
   const fileTreeTab = () => layout.fileTree.tab()
@@ -268,12 +285,21 @@ export function SessionSidePanel(props: {
                 >
                   <DragDropSensors />
                   <ConstrainDragYAxis />
-                  <Tabs value={activeTab()} onChange={openTab}>
+                  <Tabs value={activeTab()} onChange={onTabChange}>
                     <div class="sticky top-0 shrink-0 flex">
                       <Tabs.List
                         ref={(el: HTMLDivElement) => {
                           const stop = createFileTabListSync({ el, contextOpen })
-                          onCleanup(stop)
+                          // Kobalte selects on pointerup (not just pointerdown) and also via
+                          // click/keyboard, so mark intent on every event it might select from —
+                          // the flag must be fresh in the same dispatch as onChange.
+                          const events = ["pointerdown", "pointerup", "click", "keydown"] as const
+                          for (const name of events) el.addEventListener(name, markUserTabIntent, { capture: true })
+                          onCleanup(() => {
+                            stop()
+                            for (const name of events)
+                              el.removeEventListener(name, markUserTabIntent, { capture: true })
+                          })
                         }}
                       >
                         <Show when={reviewTab() && props.canReview()}>
@@ -369,13 +395,9 @@ export function SessionSidePanel(props: {
                       </Tabs.Content>
                     </Show>
 
-                    <Show when={activeGazeTab()} keyed>
-                      {(tab) => <GazeTabContent tab={tab} />}
-                    </Show>
-
-                    <Show when={activePlainFileTab()} keyed>
-                      {(tab) => <FileTabContent tab={tab} />}
-                    </Show>
+                    <For each={openedTabs()}>
+                      {(tab) => (isGazeTab(tab) ? <GazeTabContent tab={tab} /> : <FileTabContent tab={tab} />)}
+                    </For>
                   </Tabs>
                   <DragOverlay>
                     <Show when={store.activeDraggable} keyed>

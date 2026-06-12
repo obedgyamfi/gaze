@@ -149,6 +149,34 @@ export const createOpenSessionFileTab = (input: {
   }
 }
 
+/**
+ * Decide whether a Tabs `onChange(value)` should be applied to the store.
+ *
+ * Kobalte's Tabs reconcile effect "corrects" the selection to the first trigger
+ * (and fires onChange) whenever the controlled active value has no trigger
+ * registered in its DOM collection yet — which happens for a beat when a tool
+ * tab is opened from outside the Tabs (the module tree) before its trigger
+ * mounts. That correction must be rejected so it can't overwrite the intended
+ * tab. A genuine click/keypress on the tab list is distinguished by a recent
+ * interaction timestamp (passed as `recentUserIntent`).
+ *
+ * Returns true to apply the change, false to ignore it.
+ */
+export const shouldApplyTabChange = (input: {
+  value: string
+  intended: string | undefined
+  openedTabs: readonly string[]
+  recentUserIntent: boolean
+}) => {
+  if (input.recentUserIntent) return true
+  if (!input.intended) return true
+  if (input.value === input.intended) return true
+  // No user interaction and the change moves away from a still-valid open tab:
+  // this is Kobalte's reconcile correction, not a real selection — ignore it.
+  if (input.openedTabs.includes(input.intended)) return false
+  return true
+}
+
 export const getTabReorderIndex = (tabs: readonly string[], from: string, to: string) => {
   const fromIndex = tabs.indexOf(from)
   const toIndex = tabs.indexOf(to)
