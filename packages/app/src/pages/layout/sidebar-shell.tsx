@@ -86,11 +86,11 @@ export const SidebarContent = (props: {
                   aria-label={typeof props.openProjectLabel === "string" ? props.openProjectLabel : undefined}
                 />
               </Tooltip>
+              <Show when={props.renderGazeNav}>{props.renderGazeNav?.()}</Show>
             </div>
             <DragOverlay>{props.renderProjectOverlay()}</DragOverlay>
           </DragDropProvider>
         </div>
-        <Show when={props.renderGazeNav}>{props.renderGazeNav?.()}</Show>
         <div class="shrink-0 w-full pt-3 pb-6 flex flex-col items-center gap-2">
           <TooltipKeybind placement={placement()} title={props.settingsLabel()} keybind={props.settingsKeybind() ?? ""}>
             <IconButton
