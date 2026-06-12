@@ -91,6 +91,8 @@ import {
 } from "./layout/sidebar-workspace"
 import { ProjectDragOverlay, SortableProject, type ProjectSidebarContext } from "./layout/sidebar-project"
 import { SidebarContent } from "./layout/sidebar-shell"
+import { GazeNav } from "./layout/gaze-nav"
+import { GazeModuleTree } from "./layout/gaze-module-tree"
 
 export default function Layout(props: ParentProps) {
   const serverSDK = useServerSDK()
@@ -2203,6 +2205,8 @@ export default function Layout(props: ParentProps) {
                 </div>
               </div>
 
+              <GazeModuleTree />
+
               <div class="flex-1 min-h-0 flex flex-col">
                 <Show
                   when={workspacesEnabled()}
@@ -2346,6 +2350,7 @@ export default function Layout(props: ParentProps) {
       onOpenSettings={openSettings}
       helpLabel={() => language.t("sidebar.help")}
       onOpenHelp={() => platform.openLink("https://opencode.ai/desktop-feedback")}
+      renderGazeNav={() => <GazeNav mobile={mobile} />}
       renderPanel={() =>
         mobile ? <SidebarPanel project={currentProject} mobile /> : <SidebarPanel project={currentProject} merged />
       }

@@ -272,6 +272,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         session: {
           width: DEFAULT_SESSION_WIDTH,
         },
+        chat: {
+          collapsed: false,
+        },
         mobileSidebar: {
           opened: false,
         },
@@ -630,6 +633,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         height: createMemo(() => store.terminal.height),
         resize(height: number) {
           setStore("terminal", "height", height)
+        },
+      },
+      chat: {
+        collapsed: createMemo(() => store.chat?.collapsed ?? false),
+        toggle() {
+          setStore("chat", { collapsed: !(store.chat?.collapsed ?? false) })
         },
       },
       review: {

@@ -57,6 +57,13 @@ import {
 import { MessageTimeline } from "@/pages/session/message-timeline"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { isGazeTab, gazeTab } from "@/pages/gaze/tab"
+import { enabledModules } from "@/modules/registry"
+import { Icon } from "@opencode-ai/ui/icon"
+import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
+import { useCommand } from "@/context/command"
+
+const seededDefaultTool = new Set<string>()
 import { useServer } from "@/context/server"
 import { syncSessionModel } from "@/pages/session/session-model-helpers"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
@@ -192,6 +199,7 @@ export default function Page() {
   const queryClient = useQueryClient()
   const dialog = useDialog()
   const language = useLanguage()
+  const command = useCommand()
   const sdk = useSDK()
   const serverSDK = useServerSDK()
   const settings = useSettings()
@@ -280,13 +288,28 @@ export default function Page() {
         opened: layout.fileTree.opened(),
       }),
   )
-  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen())
+  const desktopGazeOpen = createMemo(() => isDesktop() && tabs().all().some(isGazeTab))
+  const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen() || desktopGazeOpen())
+  const chatHidden = createMemo(() => isDesktop() && layout.chat.collapsed() && desktopSidePanelOpen())
+
+  createEffect(() => {
+    if (!layout.ready()) return
+    if (!isDesktop()) return
+    const key = sessionKey()
+    if (seededDefaultTool.has(key)) return
+    const current = tabs().tabs()
+    seededDefaultTool.add(key)
+    if (current.all.length > 0) return
+    const tool = enabledModules()[0]?.tools[0]
+    if (!tool) return
+    void tabs().open(gazeTab(tool.id))
+  })
   const sessionPanelWidth = createMemo(() => {
     if (!desktopSidePanelOpen()) return "100%"
-    if (desktopReviewOpen()) return `${layout.session.width()}px`
+    if (desktopReviewOpen() || desktopGazeOpen()) return `${layout.session.width()}px`
     return `calc(100% - ${layout.fileTree.width()}px)`
   })
-  const centered = createMemo(() => isDesktop() && !desktopReviewOpen())
+  const centered = createMemo(() => isDesktop() && !desktopReviewOpen() && !desktopGazeOpen())
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -1753,9 +1776,10 @@ export default function Page() {
 
         <div
           classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none transition-[width]": true,
+            "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none md:order-2 transition-[width]": true,
             "duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
               !size.active() && !ui.reviewSnap,
+            "!hidden": chatHidden(),
           }}
           style={{
             width: sessionPanelWidth(),
@@ -1768,6 +1792,25 @@ export default function Page() {
               "shadow-[var(--v2-elevation-raised)]": settings.general.newLayoutDesigns() && !!params.id,
             }}
           >
+            <Show when={isDesktop()}>
+              <div class="shrink-0 flex items-center justify-end gap-1 px-2 pt-1.5">
+                <TooltipKeybind
+                  title={language.t("command.review.toggle")}
+                  keybind={command.keybind("review.toggle")}
+                >
+                  <Button
+                    variant="ghost"
+                    class="w-8 h-6 p-0 box-border"
+                    onClick={() => view().reviewPanel.toggle()}
+                    aria-label={language.t("command.review.toggle")}
+                    aria-expanded={view().reviewPanel.opened()}
+                    aria-controls="review-panel"
+                  >
+                    <Icon size="small" name={view().reviewPanel.opened() ? "review-active" : "review"} />
+                  </Button>
+                </TooltipKeybind>
+              </div>
+            </Show>
             <div class="flex-1 min-h-0 overflow-hidden">
               <Switch>
                 <Match when={params.id && mobileChanges()}>
@@ -1827,13 +1870,14 @@ export default function Page() {
             <Show when={params.id || !newSessionDesign()}>{composerRegion("dock")}</Show>
           </div>
 
-          <Show when={desktopReviewOpen()}>
+          <Show when={desktopReviewOpen() || desktopGazeOpen()}>
             <div onPointerDown={() => size.start()}>
               <ResizeHandle
                 classList={{
-                  "-right-1": settings.general.newLayoutDesigns(),
+                  "-left-1": settings.general.newLayoutDesigns(),
                 }}
                 direction="horizontal"
+                edge="start"
                 size={layout.session.width()}
                 min={450}
                 max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.45}

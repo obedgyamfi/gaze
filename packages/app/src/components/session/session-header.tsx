@@ -322,7 +322,7 @@ export function SessionHeader() {
         {(mount) => (
           <Portal mount={mount()}>
             <Show
-              when={isDesktopV2}
+              when={isDesktopV2()}
               fallback={
                 <div class="flex items-center gap-2">
                   <Show when={projectDirectory()}>
@@ -463,21 +463,17 @@ export function SessionHeader() {
                     </Show>
 
                     <div class="hidden md:flex items-center gap-1 shrink-0">
-                      <TooltipKeybind
-                        title={language.t("command.review.toggle")}
-                        keybind={command.keybind("review.toggle")}
-                      >
+                      <Tooltip placement="bottom" value="Toggle chat panel">
                         <Button
                           variant="ghost"
-                          class="group/review-toggle titlebar-icon w-8 h-6 p-0 box-border"
-                          onClick={() => view().reviewPanel.toggle()}
-                          aria-label={language.t("command.review.toggle")}
-                          aria-expanded={view().reviewPanel.opened()}
-                          aria-controls="review-panel"
+                          class="group/chat-toggle titlebar-icon w-8 h-6 p-0 box-border"
+                          onClick={() => layout.chat.toggle()}
+                          aria-label="Toggle chat panel"
+                          aria-expanded={!layout.chat.collapsed()}
                         >
-                          <Icon size="small" name={view().reviewPanel.opened() ? "review-active" : "review"} />
+                          <Icon size="small" name={layout.chat.collapsed() ? "layout-right" : "layout-right-full"} />
                         </Button>
-                      </TooltipKeybind>
+                      </Tooltip>
 
                       <Show when={tree()}>
                         <TooltipKeybind

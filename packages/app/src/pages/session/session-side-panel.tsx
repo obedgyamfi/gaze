@@ -33,6 +33,7 @@ import {
 } from "@/pages/session/helpers"
 import { setSessionHandoff } from "@/pages/session/handoff"
 import { useSessionLayout } from "@/pages/session/session-layout"
+import { GazeTabContent, isGazeTab } from "@/pages/gaze/tab"
 
 type RenderDiff = (SnapshotFileDiff & { file: string }) | VcsFileDiff
 
@@ -77,11 +78,13 @@ export function SessionSidePanel(props: {
         opened: layout.fileTree.opened(),
       }),
   )
-  const open = createMemo(() => reviewOpen() || fileOpen())
+  const gazeOpen = createMemo(() => isDesktop() && tabs().all().some(isGazeTab))
+  const open = createMemo(() => reviewOpen() || fileOpen() || gazeOpen())
+  const tabsRegionOpen = createMemo(() => reviewOpen() || gazeOpen())
   const reviewTab = createMemo(() => isDesktop())
   const panelWidth = createMemo(() => {
     if (!open()) return "0px"
-    if (reviewOpen()) return "auto"
+    if (tabsRegionOpen()) return "auto"
     return `${layout.fileTree.width()}px`
   })
   const treeWidth = createMemo(() => (fileOpen() ? `${layout.fileTree.width()}px` : "0px"))
@@ -158,6 +161,14 @@ export function SessionSidePanel(props: {
   const openedTabs = tabState.openedTabs
   const activeTab = tabState.activeTab
   const activeFileTab = tabState.activeFileTab
+  const activeGazeTab = () => {
+    const tab = activeFileTab()
+    return tab && isGazeTab(tab) ? tab : undefined
+  }
+  const activePlainFileTab = () => {
+    const tab = activeFileTab()
+    return tab && !isGazeTab(tab) ? tab : undefined
+  }
 
   const fileTreeTab = () => layout.fileTree.tab()
 
@@ -229,7 +240,7 @@ export function SessionSidePanel(props: {
           "transition-[width] duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
             !props.size.active() && !props.reviewSnap,
           "rounded-[10px] shadow-[var(--v2-elevation-raised)] overflow-hidden": settings.general.newLayoutDesigns(),
-          "flex-1": reviewOpen(),
+          "flex-1": tabsRegionOpen(),
         }}
         style={{ width: panelWidth() }}
       >
@@ -237,15 +248,15 @@ export function SessionSidePanel(props: {
           <div
             class="size-full flex"
             classList={{
-              "border-l border-border-weaker-base": !settings.general.newLayoutDesigns(),
+              "border-r border-border-weaker-base": !settings.general.newLayoutDesigns(),
             }}
           >
             <div
-              aria-hidden={!reviewOpen()}
-              inert={!reviewOpen()}
+              aria-hidden={!tabsRegionOpen()}
+              inert={!tabsRegionOpen()}
               class="relative min-w-0 h-full flex-1 overflow-hidden bg-background-base"
               classList={{
-                "pointer-events-none": !reviewOpen(),
+                "pointer-events-none": !tabsRegionOpen(),
               }}
             >
               <div class="size-full min-w-0 h-full bg-background-base">
@@ -358,7 +369,11 @@ export function SessionSidePanel(props: {
                       </Tabs.Content>
                     </Show>
 
-                    <Show when={activeFileTab()} keyed>
+                    <Show when={activeGazeTab()} keyed>
+                      {(tab) => <GazeTabContent tab={tab} />}
+                    </Show>
+
+                    <Show when={activePlainFileTab()} keyed>
                       {(tab) => <FileTabContent tab={tab} />}
                     </Show>
                   </Tabs>
@@ -458,7 +473,7 @@ export function SessionSidePanel(props: {
                   <div onPointerDown={() => props.size.start()}>
                     <ResizeHandle
                       direction="horizontal"
-                      edge="start"
+                      edge="end"
                       size={layout.fileTree.width()}
                       min={200}
                       max={480}

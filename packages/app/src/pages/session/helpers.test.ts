@@ -187,4 +187,26 @@ describe("createSessionTabs", () => {
       dispose()
     })
   })
+
+  test("keeps a non-file tab (gaze://) active instead of falling back to review", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({
+        active: "gaze://proxy" as string | undefined,
+        all: ["gaze://graph", "gaze://proxy"],
+      })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: (tab) => (tab.startsWith("file://") ? tab.slice("file://".length) : undefined),
+        normalizeTab: (tab) => tab,
+        review: () => true,
+        hasReview: () => true,
+      })
+
+      expect(result.activeTab()).toBe("gaze://proxy")
+      expect(result.activeFileTab()).toBe("gaze://proxy")
+      expect(result.closableTab()).toBe("gaze://proxy")
+      dispose()
+    })
+  })
 })

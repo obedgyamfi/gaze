@@ -6,6 +6,9 @@ import { IconButton } from "@opencode-ai/ui/icon-button"
 import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { getFilename } from "@opencode-ai/core/util/path"
+import { Icon } from "@opencode-ai/ui/icon"
+import { findView } from "@/modules/registry"
+import { gazeTabView } from "@/pages/gaze/tab"
 import { useFile } from "@/context/file"
 import { useLanguage } from "@/context/language"
 import { useCommand } from "@/context/command"
@@ -34,6 +37,16 @@ export function SortableTab(props: { tab: string; onTabClose: (tab: string) => v
   const sortable = createSortable(props.tab)
   const path = createMemo(() => file.pathFromTab(props.tab))
   const content = createMemo(() => {
+    const viewId = gazeTabView(props.tab)
+    if (viewId) {
+      const view = findView(viewId)
+      return (
+        <div class="flex items-center gap-x-1.5 min-w-0">
+          <Icon name={view?.icon ?? "dot-grid"} size="small" class="shrink-0 text-icon-base" />
+          <span class="text-14-medium truncate">{view?.label ?? viewId}</span>
+        </div>
+      )
+    }
     const value = path()
     if (!value) return
     return <FileVisual path={value} />

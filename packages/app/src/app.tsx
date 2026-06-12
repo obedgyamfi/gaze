@@ -50,10 +50,12 @@ import DirectoryLayout, { DirectoryDataProvider } from "@/pages/directory-layout
 import Layout from "@/pages/layout"
 import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
+import { GazeProvider } from "./context/gaze"
 
 const HomeRoute = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
 const NewSession = lazy(() => import("@/pages/new-session"))
+const GazeView = lazy(() => import("@/pages/gaze/view"))
 
 const SessionRoute = Object.assign(
   () => {
@@ -181,7 +183,9 @@ function AppShellProviders(props: ParentProps) {
             <ModelsProvider>
               <CommandProvider>
                 <HighlightsProvider>
-                  <Layout>{props.children}</Layout>
+                  <GazeProvider>
+                    <Layout>{props.children}</Layout>
+                  </GazeProvider>
                 </HighlightsProvider>
               </CommandProvider>
             </ModelsProvider>
@@ -273,19 +277,19 @@ function ConnectionGate(props: ParentProps<{ disableHealthCheck?: boolean }>) {
     props.disableHealthCheck
       ? true
       : Effect.gen(function* () {
-          if (!server.current) return true
-          const { http, type } = server.current
+        if (!server.current) return true
+        const { http, type } = server.current
 
-          while (true) {
-            const res = yield* Effect.promise(() => checkServerHealth(http))
-            if (res.healthy) return true
-            if (checkMode() === "background" || type === "http") return false
-          }
-        }).pipe(
-          Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.succeed(false) }),
-          Effect.ensuring(Effect.sync(() => setCheckMode("background"))),
-          Effect.runPromise,
-        ),
+        while (true) {
+          const res = yield* Effect.promise(() => checkServerHealth(http))
+          if (res.healthy) return true
+          if (checkMode() === "background" || type === "http") return false
+        }
+      }).pipe(
+        Effect.timeoutOrElse({ duration: "10 seconds", orElse: () => Effect.succeed(false) }),
+        Effect.ensuring(Effect.sync(() => setCheckMode("background"))),
+        Effect.runPromise,
+      ),
   )
   const checking = createMemo(
     () => checkMode() === "blocking" && ["unresolved", "pending"].includes(startupHealthCheck.state),
@@ -410,6 +414,7 @@ export function AppInterface(props: {
             )}
           >
             <Route path="/" component={HomeRoute} />
+            <Route path="/gaze/:view" component={GazeView} />
             <Route path="/new-session" component={DraftRoute} />
             <Route path="/:dir" component={DirectoryLayout}>
               <Route path="/" component={() => <Navigate href="session" />} />
