@@ -42,6 +42,34 @@ export type BrowserAPI = {
   subscribe: (cb: (status: BrowserStatus) => void) => () => void
 }
 
+export type {
+  BodyData,
+  CaptureFilter,
+  CaptureRecord,
+  CaptureStreamEvent,
+  HeaderPair,
+  HttpSide,
+  RepeaterRequest,
+} from "../main/capture/types"
+import type {
+  BodyData,
+  CaptureFilter,
+  CaptureRecord,
+  CaptureStreamEvent,
+  HttpSide,
+  RepeaterRequest,
+} from "../main/capture/types"
+
+export type CaptureAPI = {
+  subscribe: (cb: (event: CaptureStreamEvent) => void) => () => void
+  list: (filter?: CaptureFilter) => Promise<CaptureRecord[]>
+  getBody: (id: string, side: HttpSide) => Promise<BodyData | null>
+  clear: () => Promise<void>
+  star: (id: string, on: boolean) => Promise<void>
+  comment: (id: string, text?: string) => Promise<void>
+  repeaterSend: (req: RepeaterRequest) => Promise<CaptureRecord>
+}
+
 export type LinuxDisplayBackend = "wayland" | "auto"
 export type TitlebarTheme = {
   mode: "light" | "dark"
@@ -61,6 +89,7 @@ export type ElectronAPI = {
   wslServers: WslServersAPI
   updater: UpdaterAPI
   browser: BrowserAPI
+  capture: CaptureAPI
   consumeInitialDeepLinks: () => Promise<string[]>
   getDefaultServerUrl: () => Promise<string | null>
   setDefaultServerUrl: (url: string | null) => Promise<void>

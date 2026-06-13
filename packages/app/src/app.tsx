@@ -51,6 +51,7 @@ import Layout from "@/pages/layout"
 import { ErrorPage } from "./pages/error"
 import { useCheckServerHealth } from "./utils/server-health"
 import { GazeProvider } from "./context/gaze"
+import { WebCaptureProvider } from "./context/web-capture"
 
 const HomeRoute = lazy(() => import("@/pages/home"))
 const Session = lazy(() => import("@/pages/session"))
@@ -184,7 +185,9 @@ function AppShellProviders(props: ParentProps) {
               <CommandProvider>
                 <HighlightsProvider>
                   <GazeProvider>
-                    <Layout>{props.children}</Layout>
+                    <WebCaptureProvider>
+                      <Layout>{props.children}</Layout>
+                    </WebCaptureProvider>
                   </GazeProvider>
                 </HighlightsProvider>
               </CommandProvider>

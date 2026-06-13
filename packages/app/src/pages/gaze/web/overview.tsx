@@ -1,12 +1,14 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { usePlatform, type BrowserStatus } from "@/context/platform"
+import { useWebCapture } from "@/context/web-capture"
 import { showToast } from "@/utils/toast"
 
 export default function WebOverview() {
   const platform = usePlatform()
   const browser = platform.browser
+  const capture = useWebCapture()
   const [status, setStatus] = createSignal<BrowserStatus>({ running: false })
   const [busy, setBusy] = createSignal(false)
 
@@ -108,6 +110,53 @@ export default function WebOverview() {
             </div>
           </Show>
         </div>
+
+        <Show when={capture.available}>
+          <div class="rounded-xl border border-border-weak-base bg-background-stronger p-5 flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-14-medium text-text-strong">Live capture</span>
+              <div class="flex items-center gap-3">
+                <span class="text-12-regular text-text-weak">{capture.records().length} requests</span>
+                <Show when={capture.records().length > 0}>
+                  <Button size="small" variant="ghost" onClick={() => void capture.clear()}>
+                    Clear
+                  </Button>
+                </Show>
+              </div>
+            </div>
+            <Show
+              when={capture.records().length > 0}
+              fallback={
+                <span class="text-12-regular text-text-weak">
+                  Launch the browser and navigate — captured requests stream in here.
+                </span>
+              }
+            >
+              <div class="flex flex-col gap-0.5 max-h-72 overflow-y-auto font-mono text-12-regular">
+                <For each={capture.records().slice(0, 50)}>
+                  {(r) => (
+                    <div class="flex items-center gap-2 py-0.5 min-w-0">
+                      <span class="shrink-0 w-12 text-text-strong">{r.method}</span>
+                      <span
+                        class="shrink-0 w-10 text-right"
+                        classList={{
+                          "text-text-weak": !r.status,
+                          "text-text-base": !!r.status,
+                        }}
+                      >
+                        {r.status ?? "—"}
+                      </span>
+                      <span class="min-w-0 flex-1 truncate text-text-base">
+                        <span class="text-text-weak">{r.host}</span>
+                        {r.path}
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
     </div>
   )

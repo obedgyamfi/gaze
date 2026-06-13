@@ -253,6 +253,16 @@ const createPlatform = (): Platform => {
       subscribe: (cb) => window.api.browser.subscribe(cb),
     },
 
+    capture: {
+      subscribe: (cb) => window.api.capture.subscribe(cb),
+      list: (filter) => window.api.capture.list(filter),
+      getBody: (id, side) => window.api.capture.getBody(id, side),
+      clear: () => window.api.capture.clear(),
+      star: (id, on) => window.api.capture.star(id, on),
+      comment: (id, text) => window.api.capture.comment(id, text),
+      repeaterSend: (req) => window.api.capture.repeaterSend(req),
+    },
+
     webviewZoom,
 
     getPinchZoomEnabled: () => window.api.getPinchZoomEnabled(),

@@ -5,6 +5,9 @@ import type { DesktopMenuAction } from "../desktop-menu"
 import { ServerConnection } from "./server"
 import type { WslServersPlatform } from "../wsl/types"
 import type { UpdaterPlatform } from "../updater"
+import type { CapturePlatform } from "../web/capture-types"
+
+export type { CapturePlatform } from "../web/capture-types"
 
 type PickerPaths = string | string[] | null
 type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
@@ -105,6 +108,9 @@ type PlatformBase = {
 
   /** Spawn and control an external Chromium-based browser for capture (desktop only) */
   browser?: BrowserPlatform
+
+  /** Live web capture + repeater over the launched browser (desktop only) */
+  capture?: CapturePlatform
 
   /** Export collected diagnostic logs (desktop only) */
   exportDebugLogs?(): Promise<string>

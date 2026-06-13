@@ -13,6 +13,8 @@ import { getPinchZoomEnabled, setPinchZoomEnabled, setTitlebar, updateTitlebar }
 import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
 import { BrowserController } from "./browser"
+import { CaptureController } from "./capture/controller"
+import type { CaptureFilter, HttpSide, RepeaterRequest } from "./capture/types"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -41,6 +43,8 @@ type Deps = {
 }
 
 const browserController = new BrowserController()
+const captureController = new CaptureController()
+captureController.attachTo(browserController)
 
 export function registerIpcHandlers(deps: Deps) {
   const updaterSubscriptions = createUpdaterSubscriptions()
@@ -61,6 +65,31 @@ export function registerIpcHandlers(deps: Deps) {
     })
     event.sender.once("destroyed", dispose)
   })
+
+  ipcMain.handle("capture-subscribe", (event) => {
+    const dispose = captureController.subscribe((captureEvent) => {
+      if (event.sender.isDestroyed()) {
+        dispose()
+        return
+      }
+      event.sender.send("capture-event", captureEvent)
+    })
+    event.sender.once("destroyed", dispose)
+  })
+  ipcMain.handle("capture-list", (_event: IpcMainInvokeEvent, filter?: CaptureFilter) => captureController.list(filter))
+  ipcMain.handle("capture-get-body", (_event: IpcMainInvokeEvent, id: string, side: HttpSide) =>
+    captureController.getBody(id, side),
+  )
+  ipcMain.handle("capture-clear", () => captureController.clear())
+  ipcMain.handle("capture-star", (_event: IpcMainInvokeEvent, id: string, on: boolean) =>
+    captureController.star(id, on),
+  )
+  ipcMain.handle("capture-comment", (_event: IpcMainInvokeEvent, id: string, text?: string) =>
+    captureController.comment(id, text),
+  )
+  ipcMain.handle("repeater-send", (_event: IpcMainInvokeEvent, req: RepeaterRequest) =>
+    captureController.sendRepeater(req),
+  )
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())
   ipcMain.handle("await-initialization", () => deps.awaitInitialization())

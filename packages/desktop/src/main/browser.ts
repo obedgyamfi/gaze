@@ -116,14 +116,17 @@ export class BrowserController {
     const profileDir = await mkdtemp(join(tmpdir(), "morgana-web-"))
     this.profileDir = profileDir
 
-    const url = opts?.url?.trim() || "about:blank"
+    // Launch blank and let the capture client navigate to the target AFTER it has
+    // attached and enabled the Network domain — otherwise the initial page load
+    // races ahead of capture and is missed.
+    const url = opts?.url?.trim() || undefined
     const args = [
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profileDir}`,
       "--no-first-run",
       "--no-default-browser-check",
       "--new-window",
-      url,
+      "about:blank",
     ]
 
     const child = spawn(executable, args, { detached: false, stdio: "ignore" })

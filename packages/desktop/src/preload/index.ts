@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
-import type { BrowserStatus, ElectronAPI, WslServersEvent } from "./types"
+import type { BrowserStatus, CaptureStreamEvent, ElectronAPI, WslServersEvent } from "./types"
 import type { UpdaterState } from "@opencode-ai/app/updater"
 
 const updaterCallbacks = new Set<(state: UpdaterState) => void>()
@@ -67,6 +67,20 @@ const api: ElectronAPI = {
       void ipcRenderer.invoke("browser-subscribe")
       return () => ipcRenderer.removeListener("browser-status", handler)
     },
+  },
+  capture: {
+    subscribe: (cb) => {
+      const handler = (_: unknown, event: CaptureStreamEvent) => cb(event)
+      ipcRenderer.on("capture-event", handler)
+      void ipcRenderer.invoke("capture-subscribe")
+      return () => ipcRenderer.removeListener("capture-event", handler)
+    },
+    list: (filter) => ipcRenderer.invoke("capture-list", filter),
+    getBody: (id, side) => ipcRenderer.invoke("capture-get-body", id, side),
+    clear: () => ipcRenderer.invoke("capture-clear"),
+    star: (id, on) => ipcRenderer.invoke("capture-star", id, on),
+    comment: (id, text) => ipcRenderer.invoke("capture-comment", id, text),
+    repeaterSend: (req) => ipcRenderer.invoke("repeater-send", req),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),
