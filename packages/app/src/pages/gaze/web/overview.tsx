@@ -23,6 +23,8 @@ export default function WebOverview() {
     if (!browser || busy()) return
     setBusy(true)
     try {
+      // Tag everything this browser captures to the current engagement.
+      capture.setCaptureWorkspace()
       const next = await browser.launch()
       setStatus(next)
     } catch (error) {

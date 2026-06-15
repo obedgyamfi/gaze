@@ -28,6 +28,8 @@ interface ResponseMeta {
 
 interface SessionState {
   currentUrl?: string
+  /** Set once a real page load begins; before that we ignore new-tab/blank noise. */
+  armed: boolean
   /** requestId → current record id (advances across redirects). */
   recordIds: Map<string, string>
   /** requestId → redirect leg index. */
@@ -98,6 +100,7 @@ export class CaptureClient {
 
     this.sessions.set(sessionId, {
       currentUrl: params.targetInfo?.url || undefined,
+      armed: false,
       recordIds: new Map(),
       legs: new Map(),
       responses: new Map(),
@@ -127,6 +130,14 @@ export class CaptureClient {
   private onRequest(params: any, sessionId?: string): void {
     const session = sessionId ? this.sessions.get(sessionId) : undefined
     if (!session || !sessionId) return
+    // Record only once a real page load has begun. The first top-level Document
+    // request to an http(s) URL arms the session; before that (new-tab page,
+    // about:blank) we ignore the noise. Once armed, everything the page does is
+    // captured — including ws/wss and other schemes — so capture isn't limited.
+    if (!session.armed) {
+      if (params.type === "Document" && isCapturableUrl(params.request?.url)) session.armed = true
+      else return
+    }
     const requestId: string = params.requestId
 
     // A redirect reuses the requestId and carries the prior response — finalize
@@ -239,8 +250,9 @@ export class CaptureClient {
     const frame = params.frame ?? {}
     if (frame.parentId) return // main frame only
     const url: string = frame.url ?? ""
-    if (!url || url === "about:blank") return
+    if (!isCapturableUrl(url)) return // ignore about:blank, chrome://newtab, etc.
 
+    session.armed = true // a real page is loaded — capture its traffic
     const initiator = session.currentUrl
     session.currentUrl = url
     this.emit({ type: "nav", nav: { ts: Date.now(), url, frameId: frame.id, initiatorUrl: initiator } })
@@ -272,6 +284,10 @@ export class CaptureClient {
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+function isCapturableUrl(url?: string): boolean {
+  return !!url && (url.startsWith("http://") || url.startsWith("https://"))
+}
 
 function headersToPairs(headers: Record<string, string> | undefined): HeaderPair[] {
   if (!headers) return []

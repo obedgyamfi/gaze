@@ -1,25 +1,31 @@
-import { createMemo, onCleanup, onMount } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore, produce } from "solid-js/store"
+import { useLocation } from "@solidjs/router"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { usePlatform } from "@/context/platform"
-import type {
-  CaptureRecord,
-  FormRecord,
-  HttpSide,
-  NavRecord,
-  RepeaterRequest,
-} from "@/web/capture-types"
+import type { CaptureRecord, FormRecord, HttpSide, NavRecord, RepeaterRequest } from "@/web/capture-types"
 
-// Renderer-side source of truth for live web capture. Subscribes to the desktop
-// capture stream, upserts records by id, and exposes selectors the web-module
-// tools (Overview, Graph, Proxy, Repeater) read. One global stream in Phase 1
-// (a single launched browser); partitioning per engagement layers on later.
+// Renderer-side source of truth for live web capture. Data is partitioned per
+// workspace (engagement): records/navs/forms are bucketed by the workspace they
+// were captured in, and the selectors expose only the workspace the operator is
+// currently viewing — so switching workspaces shows a clean, bounded surface and
+// never leaks another engagement's traffic.
 
-interface CaptureState {
+interface Bucket {
   records: Record<string, CaptureRecord>
   order: string[]
   navs: NavRecord[]
   forms: FormRecord[]
+}
+
+function emptyBucket(): Bucket {
+  return { records: {}, order: [], navs: [], forms: [] }
+}
+
+// The workspace is the first path segment (the base64 project dir) of routes like
+// /:dir/session/:id, where the web-module tools live.
+function workspaceOf(pathname: string): string {
+  return pathname.split("/").filter(Boolean)[0] ?? "default"
 }
 
 export const { use: useWebCapture, provider: WebCaptureProvider } = createSimpleContext({
@@ -27,59 +33,89 @@ export const { use: useWebCapture, provider: WebCaptureProvider } = createSimple
   init: () => {
     const platform = usePlatform()
     const capture = platform.capture
+    const location = useLocation()
 
-    const [state, setState] = createStore<CaptureState>({
-      records: {},
-      order: [],
-      navs: [],
-      forms: [],
-    })
+    const viewWorkspace = createMemo(() => workspaceOf(location.pathname))
+    // The workspace a launched browser captures into — set by Overview on launch
+    // so streamed traffic is tagged to its engagement even if the operator looks
+    // elsewhere mid-capture.
+    const [captureWorkspace, setCaptureWorkspace] = createSignal("")
+    const targetWorkspace = () => captureWorkspace() || viewWorkspace()
 
-    const upsert = (record: CaptureRecord) =>
+    const [state, setState] = createStore<{ byWs: Record<string, Bucket> }>({ byWs: {} })
+    const ensure = (ws: string) => {
+      if (!state.byWs[ws]) setState("byWs", ws, emptyBucket())
+    }
+
+    const upsert = (record: CaptureRecord) => {
+      const ws = targetWorkspace()
+      ensure(ws)
       setState(
-        produce((s) => {
-          if (!(record.id in s.records)) s.order.push(record.id)
-          s.records[record.id] = record
+        "byWs",
+        ws,
+        produce((b) => {
+          if (!(record.id in b.records)) b.order.push(record.id)
+          b.records[record.id] = record
         }),
       )
+    }
 
     onMount(() => {
       if (!capture) return
-      // Capture may have started before this mounted — hydrate the backlog.
-      void capture.list().then((rows) => {
-        for (const row of [...rows].reverse()) upsert(row)
-      })
       const unsubscribe = capture.subscribe((event) => {
         switch (event.type) {
           case "record":
             upsert(event.record)
             break
-          case "nav":
-            setState("navs", (n) => [...n, event.nav])
+          case "nav": {
+            const ws = targetWorkspace()
+            ensure(ws)
+            setState("byWs", ws, "navs", (n) => [...n, event.nav])
             break
-          case "form":
-            setState("forms", (f) => [...f, event.form])
+          }
+          case "form": {
+            const ws = targetWorkspace()
+            ensure(ws)
+            setState("byWs", ws, "forms", (f) => [...f, event.form])
             break
+          }
           case "clear":
-            setState({ records: {}, order: [], navs: [], forms: [] })
+            setState("byWs", {})
             break
         }
       })
       onCleanup(unsubscribe)
     })
 
+    const bucket = createMemo(() => state.byWs[viewWorkspace()] ?? emptyBucket())
     const records = createMemo(() =>
-      state.order.map((id) => state.records[id]).filter((r): r is CaptureRecord => !!r),
+      bucket()
+        .order.map((id) => bucket().records[id])
+        .filter((r): r is CaptureRecord => !!r),
     )
+
+    // Proxy UI state (selection + filters), kept here so it survives the proxy
+    // tool tab unmounting on tab switches.
+    const [proxyUi, setProxyUi] = createStore({
+      selectedId: undefined as string | undefined,
+      statusClass: "all" as string,
+      query: "",
+      starredOnly: false,
+    })
 
     return {
       available: !!capture,
       records,
-      navs: () => state.navs,
-      forms: () => state.forms,
-      record: (id: string) => state.records[id],
+      navs: () => bucket().navs,
+      forms: () => bucket().forms,
+      record: (id: string) => bucket().records[id],
+      proxyUi,
+      setProxyUi,
+      /** Tag subsequent capture to a workspace — called by Overview on launch. */
+      setCaptureWorkspace: (ws?: string) => setCaptureWorkspace(ws ?? viewWorkspace()),
       getBody: (id: string, side: HttpSide) => capture?.getBody(id, side) ?? Promise.resolve(null),
-      clear: () => capture?.clear() ?? Promise.resolve(),
+      // Clear only the workspace currently in view; other engagements are untouched.
+      clear: () => setState("byWs", viewWorkspace(), emptyBucket()),
       star: (id: string, on: boolean) => capture?.star(id, on) ?? Promise.resolve(),
       comment: (id: string, text?: string) => capture?.comment(id, text) ?? Promise.resolve(),
       repeaterSend: (req: RepeaterRequest) =>
