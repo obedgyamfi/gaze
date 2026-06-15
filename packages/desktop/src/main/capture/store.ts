@@ -10,6 +10,7 @@ import type {
   CaptureStreamEvent,
   HeaderPair,
   HttpSide,
+  RequestInitiator,
 } from "./types"
 
 const MAX_TEXT_BYTES = 5 * 1024 * 1024
@@ -26,6 +27,7 @@ export interface RequestInput {
   method: string
   url: string
   initiatorUrl?: string
+  initiator?: RequestInitiator
   resourceType?: string
   requestHeaders: HeaderPair[]
   requestBodyBytes?: Buffer
@@ -64,6 +66,7 @@ export class CaptureStore {
       query: parts.query,
       scheme: parts.scheme,
       initiatorUrl: input.initiatorUrl,
+      initiator: input.initiator,
       resourceType: input.resourceType,
       requestHeaders: input.requestHeaders,
       requestBody: meta(input.requestBodyBytes, contentTypeOf(input.requestHeaders)),
@@ -88,6 +91,33 @@ export class CaptureStore {
     record.responseBody = meta(input.responseBodyBytes, contentTypeOf(input.responseHeaders))
     record.durationMs = input.tsResponse >= record.tsRequest ? input.tsResponse - record.tsRequest : undefined
     if (input.responseBodyBytes) this.bytes(id).response = input.responseBodyBytes
+    this.emit({ type: "record", record })
+  }
+
+  /** Replace the request headers (with the complete wire set) and re-stream. */
+  setRequestHeaders(id: string, headers: HeaderPair[]): void {
+    const record = this.records.get(id)
+    if (!record) return
+    record.requestHeaders = headers
+    record.requestBody = meta(this.bodies.get(id)?.request, contentTypeOf(headers))
+    this.emit({ type: "record", record })
+  }
+
+  /** Attach the request body bytes (fetched lazily for large / binary payloads). */
+  setRequestBody(id: string, bytes: Buffer): void {
+    const record = this.records.get(id)
+    if (!record || bytes.length === 0) return
+    this.bytes(id).request = bytes
+    record.requestBody = meta(bytes, contentTypeOf(record.requestHeaders))
+    this.emit({ type: "record", record })
+  }
+
+  /** Replace the response headers (with the raw wire set) and re-stream. */
+  setResponseHeaders(id: string, headers: HeaderPair[]): void {
+    const record = this.records.get(id)
+    if (!record) return
+    record.responseHeaders = headers
+    record.responseBody = meta(this.bodies.get(id)?.response, contentTypeOf(headers))
     this.emit({ type: "record", record })
   }
 

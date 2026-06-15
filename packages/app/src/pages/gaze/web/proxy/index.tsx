@@ -127,7 +127,9 @@ export default function ProxyView() {
                     </button>
                   </td>
                   <td class="px-2 py-1">
-                    <span class={`font-mono text-12-medium ${METHOD_CLASS[r.method] ?? "text-text-base"}`}>{r.method}</span>
+                    <span class={`font-mono text-12-medium ${METHOD_CLASS[r.method] ?? "text-text-base"}`}>
+                      {r.method}
+                    </span>
                   </td>
                   <td class="max-w-0 px-2 py-1">
                     <div class="flex items-center gap-1.5 truncate">
@@ -143,7 +145,9 @@ export default function ProxyView() {
                   <td class="px-2 py-1">
                     <span class={`font-mono text-12-regular ${statusTextClass(r.status)}`}>{r.status ?? "—"}</span>
                   </td>
-                  <td class="px-2 py-1 truncate text-text-base">{r.responseBody?.contentType ?? r.resourceType ?? ""}</td>
+                  <td class="px-2 py-1 truncate text-text-base">
+                    {r.responseBody?.contentType ?? r.resourceType ?? ""}
+                  </td>
                   <td class="px-2 py-1 text-right tabular-nums text-text-weak">
                     {formatSize(r.responseBody?.size ?? 0)}
                   </td>
@@ -162,9 +166,12 @@ export default function ProxyView() {
     </div>
   )
 
+  // Keyed on the selected id (stable), not the record object — so live header/body
+  // updates (e.g. the wire Cookie/Authorization arriving) refresh the panes in place
+  // instead of remounting them and resetting the active tab + scroll.
   const detail = (
     <Show
-      when={selected()}
+      when={selectedId()}
       fallback={
         <div class="flex h-full items-center justify-center text-12-regular text-text-weak">
           Select a request to inspect it.
@@ -172,29 +179,48 @@ export default function ProxyView() {
       }
       keyed
     >
-      {(r) => (
-        <ResizableSplit
-          direction="horizontal"
-          initial={50}
-          class="h-full"
-          first={
-            <HttpMessagePane
-              title="Request"
-              side="request"
-              record={r}
-              toolbar={
-                <>
-                  <Tooltip placement="bottom" value="Send to Repeater">
-                    <IconButton icon="reset" variant="ghost" class="size-6" aria-label="Send to Repeater" onClick={() => void sendToRepeater(r)} />
-                  </Tooltip>
-                  <IconButton icon="close-small" variant="ghost" class="size-6" aria-label="Close" onClick={() => setSelectedId(undefined)} />
-                </>
-              }
-            />
-          }
-          second={<HttpMessagePane title="Response" side="response" record={r} />}
-        />
-      )}
+      {(id) => {
+        const rec = createMemo(() => capture.record(id))
+        return (
+          <Show when={rec()}>
+            {(r) => (
+              <ResizableSplit
+                direction="horizontal"
+                initial={50}
+                class="h-full"
+                first={
+                  <HttpMessagePane
+                    title="Request"
+                    side="request"
+                    record={r()}
+                    toolbar={
+                      <>
+                        <Tooltip placement="bottom" value="Send to Repeater">
+                          <IconButton
+                            icon="reset"
+                            variant="ghost"
+                            class="size-6"
+                            aria-label="Send to Repeater"
+                            onClick={() => void sendToRepeater(r())}
+                          />
+                        </Tooltip>
+                        <IconButton
+                          icon="close-small"
+                          variant="ghost"
+                          class="size-6"
+                          aria-label="Close"
+                          onClick={() => setSelectedId(undefined)}
+                        />
+                      </>
+                    }
+                  />
+                }
+                second={<HttpMessagePane title="Response" side="response" record={r()} />}
+              />
+            )}
+          </Show>
+        )
+      }}
     </Show>
   )
 
@@ -268,8 +294,18 @@ function FilterBar(props: {
 // Inline star glyph (filled vs outline) — small enough to avoid an icon dep here.
 function Icon(props: { star: boolean }) {
   return (
-    <svg width="13" height="13" viewBox="0 0 20 20" fill={props.star ? "currentColor" : "none"} stroke="currentColor" stroke-width="1.4">
-      <path d="M10 2.5l2.35 4.76 5.25.76-3.8 3.7.9 5.23L10 14.97l-4.7 2.48.9-5.23-3.8-3.7 5.25-.76z" stroke-linejoin="round" />
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 20 20"
+      fill={props.star ? "currentColor" : "none"}
+      stroke="currentColor"
+      stroke-width="1.4"
+    >
+      <path
+        d="M10 2.5l2.35 4.76 5.25.76-3.8 3.7.9 5.23L10 14.97l-4.7 2.48.9-5.23-3.8-3.7 5.25-.76z"
+        stroke-linejoin="round"
+      />
     </svg>
   )
 }

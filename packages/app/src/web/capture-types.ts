@@ -12,6 +12,26 @@ export interface HeaderPair {
   value: string
 }
 
+/** A single JS call frame from a request's initiator stack. */
+export interface InitiatorFrame {
+  functionName?: string
+  url?: string
+  lineNumber?: number
+  columnNumber?: number
+}
+
+/** Where a request came from (CDP Network.Initiator), kept verbatim for analysis. */
+export interface RequestInitiator {
+  /** parser | script | preload | preflight | SignedExchange | other */
+  type: string
+  /** Document / script URL that initiated the request (parser & script types). */
+  url?: string
+  lineNumber?: number
+  columnNumber?: number
+  /** Top JS call frames for script-initiated requests. */
+  stack?: InitiatorFrame[]
+}
+
 /** Body metadata carried on the streamed record; bytes are fetched on demand. */
 export interface BodyMeta {
   present: boolean
@@ -42,6 +62,7 @@ export interface CaptureRecord {
   query?: string
   scheme: string
   initiatorUrl?: string
+  initiator?: RequestInitiator
   resourceType?: string
   requestHeaders: HeaderPair[]
   requestBody?: BodyMeta

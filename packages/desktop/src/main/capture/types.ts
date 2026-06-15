@@ -12,6 +12,8 @@ export type {
   FormRecord,
   HeaderPair,
   HttpSide,
+  InitiatorFrame,
   NavRecord,
   RepeaterRequest,
+  RequestInitiator,
 } from "@opencode-ai/app/web/capture-types"

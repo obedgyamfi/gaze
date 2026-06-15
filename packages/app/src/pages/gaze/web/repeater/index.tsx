@@ -39,7 +39,10 @@ export default function RepeaterView() {
                   role="button"
                   aria-label="Close tab"
                   class="grid size-4 shrink-0 place-items-center rounded transition-opacity hover:bg-surface-base"
-                  classList={{ "opacity-70": active()?.id === t.id, "opacity-0 group-hover:opacity-70": active()?.id !== t.id }}
+                  classList={{
+                    "opacity-70": active()?.id === t.id,
+                    "opacity-0 group-hover:opacity-70": active()?.id !== t.id,
+                  }}
                   onClick={(e) => {
                     e.stopPropagation()
                     repeater.close(t.id)
@@ -109,7 +112,12 @@ export default function RepeaterView() {
                     onInput={(v) => repeater.update(tab.id, { raw: v })}
                   />
                 }
-                second={<ResponsePane tab={tab} record={() => (tab.responseId ? capture.record(tab.responseId) : undefined)} />}
+                second={
+                  <ResponsePane
+                    tab={tab}
+                    record={() => (tab.responseId ? capture.record(tab.responseId) : undefined)}
+                  />
+                }
               />
             </div>
           </>
@@ -120,14 +128,20 @@ export default function RepeaterView() {
 }
 
 function ResponsePane(props: { tab: RepeaterTab; record: () => CaptureRecord | undefined }) {
+  // Keyed on the record id (stable), not the record object, so the response refreshes
+  // in place as its headers/body land instead of remounting on every update.
   return (
     <Show
-      when={props.record()}
+      when={props.record()?.id}
       fallback={
         <div class="flex h-full items-center justify-center p-4 text-center text-12-regular">
           <Show
             when={props.tab.error}
-            fallback={<span class="text-text-weak">{props.tab.sending ? "Sending…" : "Send the request to see the response."}</span>}
+            fallback={
+              <span class="text-text-weak">
+                {props.tab.sending ? "Sending…" : "Send the request to see the response."}
+              </span>
+            }
           >
             <span class="text-icon-critical-base">{props.tab.error}</span>
           </Show>
@@ -135,7 +149,7 @@ function ResponsePane(props: { tab: RepeaterTab; record: () => CaptureRecord | u
       }
       keyed
     >
-      {(record) => <HttpMessagePane title="Response" side="response" record={record} />}
+      {(_id) => <HttpMessagePane title="Response" side="response" record={props.record()!} />}
     </Show>
   )
 }

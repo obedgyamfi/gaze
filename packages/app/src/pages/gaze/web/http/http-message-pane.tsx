@@ -1,7 +1,7 @@
 import { createMemo, createResource, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { useWebCapture } from "@/context/web-capture"
-import type { CaptureRecord, HeaderPair } from "@/web/capture-types"
+import type { CaptureRecord, HeaderPair, RequestInitiator } from "@/web/capture-types"
 import {
   bodyLang as bodyLangOf,
   formatBody,
@@ -14,7 +14,6 @@ import {
   buildRawMessage,
   canonicalHeaderName,
   countMatches,
-  normalizeProtocol,
   parseCookies,
   parseRawRequest,
   requestStartLine,
@@ -50,7 +49,7 @@ export function statusTextClass(status?: number): string {
 }
 const statusClass = statusTextClass
 
-type SubTab = "pretty" | "raw" | "headers" | "cookies" | "render"
+type SubTab = "pretty" | "raw" | "headers" | "cookies" | "render" | "initiator"
 
 export function HttpMessagePane(props: {
   title: string
@@ -123,21 +122,24 @@ export function HttpMessagePane(props: {
   const lang = createMemo<BodyLang>(() => bodyLangOf(ct()))
   const displayText = createMemo(() => (sub() === "pretty" ? prettyText() : rawText()))
 
-  const subTabs = createMemo<{ id: SubTab; label: string }[]>(() =>
-    props.side === "request"
-      ? [
-          { id: "pretty", label: "Pretty" },
-          { id: "raw", label: "Raw" },
-          { id: "headers", label: "Headers" },
-          { id: "cookies", label: "Cookies" },
-        ]
-      : [
-          { id: "pretty", label: "Pretty" },
-          { id: "raw", label: "Raw" },
-          { id: "render", label: "Render" },
-          { id: "headers", label: "Headers" },
-        ],
-  )
+  const subTabs = createMemo<{ id: SubTab; label: string }[]>(() => {
+    if (props.side === "request") {
+      const tabs: { id: SubTab; label: string }[] = [
+        { id: "pretty", label: "Pretty" },
+        { id: "raw", label: "Raw" },
+        { id: "headers", label: "Headers" },
+        { id: "cookies", label: "Cookies" },
+      ]
+      if (props.record?.initiator) tabs.push({ id: "initiator", label: "Initiator" })
+      return tabs
+    }
+    return [
+      { id: "pretty", label: "Pretty" },
+      { id: "raw", label: "Raw" },
+      { id: "render", label: "Render" },
+      { id: "headers", label: "Headers" },
+    ]
+  })
 
   const matches = createMemo(() => countMatches(displayText(), search().trim()))
 
@@ -188,6 +190,9 @@ export function HttpMessagePane(props: {
         <Switch>
           <Match when={sub() === "headers"}>
             <HeaderTable headers={headers()} editable={props.editable} />
+          </Match>
+          <Match when={sub() === "initiator" && props.record?.initiator}>
+            <InitiatorView initiator={props.record!.initiator!} />
           </Match>
           <Match when={sub() === "cookies"}>
             <CookieTable headers={headers()} side={props.side} />
@@ -432,6 +437,53 @@ function HeaderTable(props: { headers: HeaderPair[]; editable?: boolean }) {
             <div class="flex gap-2 break-all py-0.5">
               <span class="shrink-0 text-syntax-property">{canonicalHeaderName(h.name)}:</span>
               <span class="min-w-0 text-text-strong">{h.value}</span>
+            </div>
+          )}
+        </For>
+      </Show>
+    </div>
+  )
+}
+
+function fileAt(url?: string, line?: number, col?: number): string {
+  if (!url) return ""
+  // CDP line/column are 0-based — show them 1-based as editors do.
+  const l = typeof line === "number" ? `:${line + 1}` : ""
+  const c = typeof col === "number" ? `:${col + 1}` : ""
+  return `${url}${l}${c}`
+}
+
+// Where the request came from (CDP initiator): its type, the document/script that
+// triggered it, and the JS call stack (top frame first) for script-initiated ones.
+function InitiatorView(props: { initiator: RequestInitiator }) {
+  const origin = () => fileAt(props.initiator.url, props.initiator.lineNumber, props.initiator.columnNumber)
+  return (
+    <div class="h-full overflow-auto px-3 py-2 font-mono text-12-regular">
+      <div class="flex items-baseline gap-2 break-all py-0.5">
+        <span class="w-12 shrink-0 text-12-medium uppercase tracking-wider text-text-weak">Type</span>
+        <span class="rounded bg-surface-base px-1.5 text-text-base">{props.initiator.type}</span>
+      </div>
+      <Show when={origin()}>
+        <div class="flex gap-2 break-all py-0.5">
+          <span class="w-12 shrink-0 text-12-medium uppercase tracking-wider text-text-weak">At</span>
+          <span class="min-w-0 text-text-base">{origin()}</span>
+        </div>
+      </Show>
+      <div class="mt-2 mb-1 text-12-medium uppercase tracking-wider text-text-weak">Call stack</div>
+      <Show
+        when={props.initiator.stack?.length}
+        fallback={<span class="text-text-weak">No JavaScript call stack for this request.</span>}
+      >
+        <For each={props.initiator.stack}>
+          {(f, i) => (
+            <div class="flex gap-2 break-all py-0.5">
+              <span class="w-5 shrink-0 text-right tabular-nums text-text-weaker">{i()}</span>
+              <div class="min-w-0">
+                <div class="text-syntax-keyword">{f.functionName || "(anonymous)"}</div>
+                <Show when={fileAt(f.url, f.lineNumber, f.columnNumber)}>
+                  <div class="text-text-weak">{fileAt(f.url, f.lineNumber, f.columnNumber)}</div>
+                </Show>
+              </div>
             </div>
           )}
         </For>
