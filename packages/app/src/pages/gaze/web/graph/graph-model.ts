@@ -9,17 +9,7 @@
 
 import type { CaptureRecord, FormRecord, NavRecord } from "@/web/capture-types"
 
-export type Category =
-  | "page"
-  | "api"
-  | "form"
-  | "script"
-  | "style"
-  | "image"
-  | "font"
-  | "media"
-  | "external"
-  | "other"
+export type Category = "page" | "api" | "form" | "script" | "style" | "image" | "font" | "media" | "external" | "other"
 
 export type TreeKind = "root" | "domain" | "directory" | "leaf"
 
@@ -91,7 +81,10 @@ export function statusClassColor(code: number | undefined): string | null {
 // High-signal categories visible by default; static noise is hidden until asked.
 export const DEFAULT_CATEGORIES = new Set<Category>(["page", "api", "form", "external", "other"])
 export function defaultFilters(): Record<Category, boolean> {
-  return Object.fromEntries(CATEGORY_META.map((c) => [c.key, DEFAULT_CATEGORIES.has(c.key)])) as Record<Category, boolean>
+  return Object.fromEntries(CATEGORY_META.map((c) => [c.key, DEFAULT_CATEGORIES.has(c.key)])) as Record<
+    Category,
+    boolean
+  >
 }
 
 const EXT_STYLE = new Set(["css"])
@@ -106,7 +99,11 @@ function extOf(path: string): string {
   return dot > 0 ? last.slice(dot + 1).toLowerCase() : ""
 }
 
-export function categoryOf(record: { resourceType?: string; url: string; responseBody?: { contentType?: string } }): Category {
+export function categoryOf(record: {
+  resourceType?: string
+  url: string
+  responseBody?: { contentType?: string }
+}): Category {
   const t = record.resourceType
   if (t === "Document") return "page"
   if (t && API_TYPES.has(t)) return "api"
@@ -175,7 +172,7 @@ export function buildTree(input: {
   captures: CaptureRecord[]
   navs?: NavRecord[]
   forms?: FormRecord[]
-  filters?: Record<Category, boolean>
+  filters?: Record<string, boolean>
   collapsed?: Set<string>
 }): WebTree {
   const filters = input.filters
@@ -187,11 +184,23 @@ export function buildTree(input: {
     if (!links.has(id)) links.set(id, { id, source, target })
   }
 
-  nm.set(ROOT_ID, { id: ROOT_ID, label: "ATTACK SURFACE", kind: "root", category: null, parentId: null, host: "", captureIds: [] })
+  nm.set(ROOT_ID, {
+    id: ROOT_ID,
+    label: "ATTACK SURFACE",
+    kind: "root",
+    category: null,
+    parentId: null,
+    host: "",
+    captureIds: [],
+  })
 
   const pageHosts = new Set<string>()
 
-  const branch = (url: string, category: Category, record?: { id: string; method?: string; status?: number; resourceType?: string }) => {
+  const branch = (
+    url: string,
+    category: Category,
+    record?: { id: string; method?: string; status?: number; resourceType?: string },
+  ) => {
     const u = safeUrl(url)
     if (!u) return
     const host = u.host
@@ -287,7 +296,11 @@ function compressChains(nm: Map<string, RawNode>, links: Map<string, TreeLink>):
   rebuildLinks(nm, links, kids, removed)
 }
 
-function filterCategories(nm: Map<string, RawNode>, links: Map<string, TreeLink>, filters: Record<Category, boolean>): void {
+function filterCategories(
+  nm: Map<string, RawNode>,
+  links: Map<string, TreeLink>,
+  filters: Record<string, boolean>,
+): void {
   const kids = childIndex(links)
   const removed = new Set<string>()
   const drop = (id: string) => {
@@ -399,7 +412,14 @@ function colorOf(raw: RawNode): string {
 
 function sortKey(n: RawNode | undefined): string {
   if (!n) return "9"
-  const rank = n.kind === "directory" || n.kind === "domain" ? 0 : n.category === "page" ? 1 : n.category === "api" || n.category === "form" ? 2 : 3
+  const rank =
+    n.kind === "directory" || n.kind === "domain"
+      ? 0
+      : n.category === "page"
+        ? 1
+        : n.category === "api" || n.category === "form"
+          ? 2
+          : 3
   return `${rank}${n.label.toLowerCase()}`
 }
 

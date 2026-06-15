@@ -1,8 +1,12 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { IconButton } from "@opencode-ai/ui/icon-button"
+import { Tooltip } from "@opencode-ai/ui/tooltip"
 import { useWebCapture } from "@/context/web-capture"
+import { useRepeater } from "@/context/web-repeater"
+import { useGazeViews } from "@/pages/gaze/open"
 import type { CaptureRecord } from "@/web/capture-types"
-import { HttpMessageView } from "../http/http-message-view"
+import { HttpMessagePane } from "../http/http-message-pane"
+import { ResizableSplit } from "../http/resizable-split"
 import { statusClassColor, type TreeNode } from "./graph-model"
 
 // Full node detail — identity plus every capture that mapped to this node,
@@ -12,14 +16,16 @@ import { statusClassColor, type TreeNode } from "./graph-model"
 function statusTextColor(status?: number): string {
   const c = statusClassColor(status)
   if (!c) return "text-text-weak"
-  if (status! < 300) return "text-text-success"
+  if (status! < 300) return "text-icon-success-base"
   if (status! < 400) return "text-text-base"
-  if (status! < 500) return "text-text-warning"
-  return "text-text-danger"
+  if (status! < 500) return "text-icon-warning-base"
+  return "text-icon-critical-base"
 }
 
 export function NodeInspector(props: { node: TreeNode; onClose: () => void }) {
   const capture = useWebCapture()
+  const repeater = useRepeater()
+  const gaze = useGazeViews()
   const [selectedId, setSelectedId] = createSignal<string | undefined>(props.node.captureIds[0])
 
   const records = createMemo(() =>
@@ -27,13 +33,34 @@ export function NodeInspector(props: { node: TreeNode; onClose: () => void }) {
   )
   const selected = createMemo(() => records().find((r) => r.id === selectedId()) ?? records()[0])
 
+  const sendToRepeater = async () => {
+    const r = selected()
+    if (!r) return
+    await repeater.openFromRecord(r)
+    gaze.open("repeater")
+  }
+
   return (
     <div class="flex h-full w-[440px] shrink-0 flex-col border-l border-border-weak-base bg-background-stronger">
       <div class="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border-weak-base">
         <span class="size-2 shrink-0 rounded-full" style={{ background: props.node.color }} />
-        <span class="min-w-0 flex-1 truncate text-12-medium text-text-strong" title={props.node.url ?? props.node.label}>
+        <span
+          class="min-w-0 flex-1 truncate text-12-medium text-text-strong"
+          title={props.node.url ?? props.node.label}
+        >
           {props.node.label}
         </span>
+        <Show when={selected()}>
+          <Tooltip placement="bottom" value="Send to Repeater">
+            <IconButton
+              icon="reset"
+              variant="ghost"
+              class="size-6"
+              aria-label="Send to Repeater"
+              onClick={() => void sendToRepeater()}
+            />
+          </Tooltip>
+        </Show>
         <IconButton icon="close-small" variant="ghost" class="size-6" onClick={props.onClose} aria-label="Close" />
       </div>
 
@@ -60,7 +87,7 @@ export function NodeInspector(props: { node: TreeNode; onClose: () => void }) {
         when={records().length > 0}
         fallback={<div class="p-3 text-12-regular text-text-weak">No captured requests for this node.</div>}
       >
-        <div class="shrink-0 px-3 py-1.5 text-10-medium uppercase tracking-wider text-text-weak">
+        <div class="shrink-0 px-3 py-1.5 text-12-medium uppercase tracking-wider text-text-weak">
           {records().length} {records().length === 1 ? "capture" : "captures"}
         </div>
         <div class="shrink-0 max-h-36 overflow-y-auto border-b border-border-weak-base">
@@ -83,8 +110,26 @@ export function NodeInspector(props: { node: TreeNode; onClose: () => void }) {
           </For>
         </div>
         <div class="min-h-0 flex-1 overflow-hidden">
-          <Show when={selected()} keyed>
-            {(record) => <HttpMessageView record={record} layout="stacked" />}
+          {/* Keyed on the capture id (stable), not the record object — a capture's
+              record is replaced when its response lands, and re-keying on the object
+              would tear down and rebuild both panes (losing tab/scroll). */}
+          <Show when={selected()?.id} keyed>
+            {(id) => {
+              const record = createMemo(() => records().find((r) => r.id === id) ?? selected())
+              return (
+                <Show when={record()}>
+                  {(rec) => (
+                    <ResizableSplit
+                      direction="vertical"
+                      initial={50}
+                      class="h-full"
+                      first={<HttpMessagePane title="Request" side="request" record={rec()} />}
+                      second={<HttpMessagePane title="Response" side="response" record={rec()} />}
+                    />
+                  )}
+                </Show>
+              )
+            }}
           </Show>
         </div>
       </Show>
@@ -95,7 +140,7 @@ export function NodeInspector(props: { node: TreeNode; onClose: () => void }) {
 function Badge(props: { label: string; color?: string }) {
   return (
     <span
-      class="rounded px-1.5 py-0.5 text-10-medium uppercase tracking-wider"
+      class="rounded px-1.5 py-0.5 text-12-medium uppercase tracking-wider"
       style={{
         color: props.color ?? "var(--text-weak)",
         background: props.color ? `color-mix(in srgb, ${props.color} 16%, transparent)` : "var(--surface-base)",

@@ -1,16 +1,36 @@
-import { createEffect, onCleanup, onMount } from "solid-js"
+import { createEffect, on, onCleanup, onMount } from "solid-js"
 import ForceGraph from "force-graph"
-import { statusClassColor, type TreeNode, type WebTree } from "./graph-model"
+import { statusClassColor, type TreeLink, type TreeNode, type WebTree } from "./graph-model"
+import type { GraphView } from "./graph-state"
 
-// Rich tidy-tree renderer. force-graph is used only as the canvas/zoom/pan/
-// pointer host — node positions come from the tidy-tree layout (pinned via
-// fx/fy, simulation frozen). Glow is drawn from cached sprites; links are bezier
-// curves with a flowing pip. Colour encodes node category only.
+// Tidy-tree renderer. force-graph is used only as the canvas / zoom / pan / pointer
+// host — node positions come straight from the deterministic tidy-tree layout, so
+// the same captures always yield the same picture. The simulation is frozen; we
+// drive x/y ourselves. Updates are handled by a single reconcile against a stable
+// node cache, so a stream of captures never tears the graph down:
+//   • a node's position eases toward its new tidy-tree slot (no snapping),
+//   • a brand-new node pops in (scale 0 → 1),
+//   • a node that disappears pops out (scale → 0) and is then dropped.
+// force-graph's dataset is only re-handed over when the node/link SET changes.
 
 const TAU = Math.PI * 2
-const SPAWN_MS = 520
+const POP_IN_MS = 260
+const POP_OUT_MS = 170
+// Per-frame easing toward the tidy-tree target — quick enough to never feel laggy.
+const EASE = 0.25
 
-type FGNode = TreeNode & { fx?: number; fy?: number; appeared?: number; __nbr?: Set<string> }
+type FGNode = TreeNode & {
+  fx?: number
+  fy?: number
+  // tidy-tree target; x/y ease toward it each frame
+  tx: number
+  ty: number
+  // pop animation: 0 (gone) → 1 (full). `exit` set when the node is leaving.
+  scale: number
+  born: number
+  exit?: number
+  __nbr?: Set<string>
+}
 type FGLink = { source: any; target: any; off: number }
 
 const glowCache = new Map<string, HTMLCanvasElement>()
@@ -54,6 +74,9 @@ function radiusOf(n: TreeNode): number {
   if (n.kind === "directory") return 4.5
   return 5
 }
+function easeOutCubic(t: number): number {
+  return 1 - (1 - t) ** 3
+}
 
 export interface GraphCanvasApi {
   fit: () => void
@@ -63,23 +86,67 @@ export function GraphCanvas(props: {
   tree: WebTree
   selectedId?: string
   query?: string
+  initialView?: GraphView | null
   onSelect: (node: TreeNode | undefined) => void
   onToggleCollapse: (id: string) => void
+  onView?: (view: GraphView) => void
   onReady?: (api: GraphCanvasApi) => void
 }) {
   let container!: HTMLDivElement
   let graph: ForceGraph | undefined
   const cache = new Map<string, FGNode>()
+  let links: TreeLink[] = []
   const theme = { label: "#171717", root: "#171717", accent: "#2563eb" }
   let phase = 0
   const view = { minX: -1e6, minY: -1e6, maxX: 1e6, maxY: 1e6 }
   let lastClick = { id: "", at: 0 }
+  let loaded = false
+  let dirty = false
 
   const resolveTheme = () => {
     const css = getComputedStyle(document.documentElement)
     theme.label = css.getPropertyValue("--text-strong").trim() || theme.label
     theme.root = css.getPropertyValue("--text-stronger").trim() || theme.label
-    theme.accent = css.getPropertyValue("--primary").trim() || css.getPropertyValue("--icon-strong").trim() || theme.accent
+    theme.accent =
+      css.getPropertyValue("--primary").trim() || css.getPropertyValue("--icon-strong").trim() || theme.accent
+  }
+
+  // Hand the current cache (minus fully-gone nodes) to force-graph. Only called when
+  // the node/link set actually changes, so steady-state captures don't reset it.
+  const pushData = () => {
+    if (!graph) return
+    const nodes = [...cache.values()]
+    const present = new Set(nodes.map((n) => n.id))
+    for (const n of nodes) n.__nbr = new Set([n.id])
+    const out: FGLink[] = []
+    for (const l of links) {
+      if (!present.has(l.source) || !present.has(l.target)) continue
+      cache.get(l.source)?.__nbr?.add(l.target)
+      cache.get(l.target)?.__nbr?.add(l.source)
+      out.push({ source: l.source, target: l.target, off: linkOff(l.id) })
+    }
+    graph.graphData({ nodes, links: out })
+  }
+
+  const restoreView = () => {
+    const v = props.initialView
+    if (!graph || !v) return
+    try {
+      graph.zoom(v.k, 0)
+      graph.centerAt(v.x, v.y, 0)
+    } catch {
+      /* force-graph camera API differs across versions — best effort */
+    }
+  }
+
+  const persistView = () => {
+    if (!graph || !props.onView) return
+    try {
+      const c = graph.centerAt()
+      props.onView({ k: graph.zoom(), x: c.x, y: c.y })
+    } catch {
+      /* ignore */
+    }
   }
 
   onMount(() => {
@@ -106,6 +173,7 @@ export function GraphCanvas(props: {
       )
       .nodePointerAreaPaint((node: any, color: string, ctx: CanvasRenderingContext2D) => {
         const n = node as FGNode
+        if (n.exit !== undefined) return
         ctx.fillStyle = color
         ctx.beginPath()
         ctx.arc(n.x ?? 0, n.y ?? 0, radiusOf(n) + 3, 0, TAU)
@@ -113,6 +181,7 @@ export function GraphCanvas(props: {
       })
       .onNodeClick((node: any) => {
         const n = node as FGNode
+        if (n.exit !== undefined) return
         const now = performance.now()
         const dbl = lastClick.id === n.id && now - lastClick.at < 320
         lastClick = { id: n.id, at: now }
@@ -120,10 +189,41 @@ export function GraphCanvas(props: {
         else props.onSelect(n)
       })
       .onBackgroundClick(() => props.onSelect(undefined))
+      .onZoomEnd(persistView)
       .onRenderFramePre((ctx: CanvasRenderingContext2D, scale: number) => {
         void ctx
         void scale
         phase = (phase + 0.0026) % 1
+        const now = performance.now()
+        // Advance every node: ease toward its slot, run the pop in / out, and retire
+        // nodes whose pop-out has finished (then re-hand the trimmed set to force-graph).
+        for (const n of cache.values()) {
+          if (n.exit !== undefined) {
+            n.scale = Math.max(0, 1 - (now - n.exit) / POP_OUT_MS)
+            if (n.scale <= 0) {
+              cache.delete(n.id)
+              dirty = true
+              continue
+            }
+          } else if (n.scale < 1) {
+            n.scale = Math.min(1, easeOutCubic((now - n.born) / POP_IN_MS))
+          }
+          const dx = n.tx - (n.x ?? n.tx)
+          const dy = n.ty - (n.y ?? n.ty)
+          if (Math.abs(dx) < 0.06 && Math.abs(dy) < 0.06) {
+            n.x = n.tx
+            n.y = n.ty
+          } else {
+            n.x = (n.x ?? n.tx) + dx * EASE
+            n.y = (n.y ?? n.ty) + dy * EASE
+          }
+          n.fx = n.x
+          n.fy = n.y
+        }
+        if (dirty) {
+          dirty = false
+          pushData()
+        }
         const tl = fg.screen2GraphCoords(0, 0)
         const br = fg.screen2GraphCoords(container.clientWidth, container.clientHeight)
         view.minX = Math.min(tl.x, br.x) - 120
@@ -132,58 +232,99 @@ export function GraphCanvas(props: {
         view.maxY = Math.max(tl.y, br.y) + 120
       })
 
+    reconcile(props.tree)
+    restoreView()
+
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       fg.width(Math.round(width)).height(Math.round(height))
     })
     ro.observe(container)
 
+    // The renderer redraws every frame for the flow particles; pause it whenever the
+    // canvas is offscreen (window backgrounded) so it doesn't burn frames.
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) fg.resumeAnimation()
+      else fg.pauseAnimation()
+    })
+    io.observe(container)
+
     props.onReady?.({ fit: () => fg.zoomToFit(450, 70) })
 
     onCleanup(() => {
+      persistView()
       ro.disconnect()
+      io.disconnect()
       fg._destructor?.()
       graph = undefined
     })
   })
 
-  // Push the tidy tree, reusing cached node objects and pinning positions.
-  createEffect(() => {
-    const tree = props.tree
+  // Reconcile the incoming tidy tree into the stable node cache.
+  const reconcile = (tree: WebTree) => {
     if (!graph) return
     const now = performance.now()
-    const ids = new Set(tree.nodes.map((n) => n.id))
-    for (const id of [...cache.keys()]) if (!ids.has(id)) cache.delete(id)
+    links = tree.links
+    const incoming = new Set(tree.nodes.map((n) => n.id))
+    let setChanged = false
 
-    const nodes = tree.nodes.map((n) => {
-      const existing = cache.get(n.id)
-      if (existing) {
-        Object.assign(existing, n)
-        existing.fx = n.x
-        existing.fy = n.y
-        return existing
+    // Nodes that vanished start popping out (kept around until the pop-out finishes).
+    for (const n of cache.values()) {
+      if (n.exit === undefined && !incoming.has(n.id)) {
+        n.exit = now
+        setChanged = true
       }
-      const fresh: FGNode = { ...n, fx: n.x, fy: n.y, appeared: now }
-      cache.set(n.id, fresh)
-      return fresh
-    })
-
-    // neighbour sets for hover focus
-    for (const n of nodes) n.__nbr = new Set([n.id])
-    for (const l of tree.links) {
-      cache.get(l.source)?.__nbr?.add(l.target)
-      cache.get(l.target)?.__nbr?.add(l.source)
     }
-    const links: FGLink[] = tree.links.map((l) => ({ source: l.source, target: l.target, off: linkOff(l.id) }))
-    graph.graphData({ nodes, links })
-  })
 
-  // Repaint on selection/search change (autoPauseRedraw is off, so this is cheap).
-  createEffect(() => {
-    void props.selectedId
-    void props.query
-    graph?.nodeRelSize(5)
-  })
+    for (const tn of tree.nodes) {
+      const ex = cache.get(tn.id)
+      if (ex) {
+        const reviving = ex.exit !== undefined
+        const px = ex.x
+        const py = ex.y
+        Object.assign(ex, tn) // refresh label/status/etc (overwrites x/y with the target)
+        ex.exit = undefined
+        ex.tx = tn.x
+        ex.ty = tn.y
+        ex.x = px ?? tn.x // keep the rendered position; the frame loop eases it to the target
+        ex.y = py ?? tn.y
+        if (reviving) {
+          ex.born = now
+          setChanged = true
+        }
+        continue
+      }
+      // New node: appears in place, pops in. The very first load shows everything
+      // already settled (born in the past, full scale) so reopening the tab is instant.
+      cache.set(tn.id, {
+        ...tn,
+        tx: tn.x,
+        ty: tn.y,
+        x: tn.x,
+        y: tn.y,
+        fx: tn.x,
+        fy: tn.y,
+        born: loaded ? now : 0,
+        scale: loaded ? 0 : 1,
+      })
+      setChanged = true
+    }
+
+    if (setChanged || !loaded) {
+      loaded = true
+      pushData()
+    }
+  }
+
+  // Initial reconcile happens in onMount (once force-graph exists); this only handles
+  // later tree changes as captures stream in.
+  createEffect(
+    on(
+      () => props.tree,
+      (tree) => reconcile(tree),
+      { defer: true },
+    ),
+  )
 
   return <div ref={container} class="absolute inset-0" data-component="graph-canvas" />
 }
@@ -217,23 +358,28 @@ function wrapLabel(label: string, max: number): string[] {
   return [line1, line2]
 }
 
-function paintNode(n: FGNode, ctx: CanvasRenderingContext2D, scale: number, props: PaintProps, theme: { label: string; root: string; accent: string }, view: View) {
+function paintNode(
+  n: FGNode,
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  props: PaintProps,
+  theme: { label: string; root: string; accent: string },
+  view: View,
+) {
   const x = n.x ?? 0
   const y = n.y ?? 0
   if (x < view.minX || x > view.maxX || y < view.minY || y > view.maxY) return
 
-  const now = performance.now()
-  const age = now - (n.appeared ?? now)
-  const spawn = age < SPAWN_MS ? age / SPAWN_MS : 1
+  const pop = n.scale
   const selected = n.id === props.selectedId
   const q = props.query?.trim().toLowerCase()
   const match = q ? `${n.label} ${n.url ?? ""} ${n.host}`.toLowerCase().includes(q) : true
   const dim = !!q && !match
   const isDir = n.kind === "directory"
   const base = radiusOf(n)
-  const r = age < SPAWN_MS ? base * (0.3 + 0.7 * (1 - (1 - spawn) ** 3)) : base
+  const r = base * (0.35 + 0.65 * pop)
 
-  ctx.globalAlpha = dim ? 0.18 : age < SPAWN_MS ? spawn : 1
+  ctx.globalAlpha = (dim ? 0.18 : 1) * pop
 
   // glow sprite (skip for plain directories)
   if (!isDir) {
@@ -256,7 +402,7 @@ function paintNode(n: FGNode, ctx: CanvasRenderingContext2D, scale: number, prop
   ctx.fill()
   const statusColor = statusClassColor(n.status)
   ctx.lineWidth = (selected ? 1.8 : 1) / scale
-  ctx.strokeStyle = selected ? theme.accent : statusColor ?? rgba(n.color, 0.85)
+  ctx.strokeStyle = selected ? theme.accent : (statusColor ?? rgba(n.color, 0.85))
   ctx.stroke()
 
   // attention ring for redirects / errors
@@ -268,11 +414,10 @@ function paintNode(n: FGNode, ctx: CanvasRenderingContext2D, scale: number, prop
     ctx.stroke()
   }
 
-  // label — wraps onto a second line instead of truncating from the front.
-  // Hidden when zoomed out (incl. root/domain — their large text reads poorly at
-  // low zoom and the structure is legible without it); always shown when selected
-  // or matched by search.
-  if (scale > 0.85 || selected || (q && match)) {
+  // label — wraps onto a second line instead of truncating from the front. Hidden
+  // when zoomed out; always shown when selected or matched by search. Faded with the
+  // pop so it doesn't flash in ahead of the node.
+  if (pop > 0.6 && (scale > 0.85 || selected || (q && match))) {
     const strong = n.kind === "root" || n.kind === "domain"
     const fontSize = Math.max(3.5, 11 / scale)
     ctx.font = `${strong ? "600 " : ""}${fontSize}px ui-monospace, monospace`
@@ -288,7 +433,14 @@ function paintNode(n: FGNode, ctx: CanvasRenderingContext2D, scale: number, prop
   ctx.globalAlpha = 1
 }
 
-function paintLink(l: FGLink, ctx: CanvasRenderingContext2D, scale: number, props: PaintProps, phase: number, view: View) {
+function paintLink(
+  l: FGLink,
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  props: PaintProps,
+  phase: number,
+  view: View,
+) {
   const s = l.source as FGNode
   const t = l.target as FGNode
   if (!s || !t || s.x == null || t.x == null) return
@@ -298,6 +450,8 @@ function paintLink(l: FGLink, ctx: CanvasRenderingContext2D, scale: number, prop
   const hiY = Math.max(s.y!, t.y!)
   if (hiX < view.minX || loX > view.maxX || hiY < view.minY || loY > view.maxY) return
 
+  const alpha = Math.min(s.scale ?? 1, t.scale ?? 1)
+  if (alpha <= 0) return
   const sr = radiusOf(s)
   const tr = radiusOf(t)
   const x0 = s.x + sr
@@ -307,6 +461,7 @@ function paintLink(l: FGLink, ctx: CanvasRenderingContext2D, scale: number, prop
   const mx = (x0 + x3) / 2
   const lit = props.selectedId === t.id || props.selectedId === s.id
 
+  ctx.globalAlpha = alpha
   ctx.beginPath()
   ctx.moveTo(x0, y0)
   ctx.bezierCurveTo(mx, y0, mx, y3, x3, y3)
@@ -325,4 +480,5 @@ function paintLink(l: FGLink, ctx: CanvasRenderingContext2D, scale: number, prop
   ctx.arc(px, py, 1.6, 0, TAU)
   ctx.fillStyle = rgba(t.color, 0.95)
   ctx.fill()
+  ctx.globalAlpha = 1
 }
