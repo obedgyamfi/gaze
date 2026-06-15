@@ -26,7 +26,10 @@ const DEFAULT_SIDEBAR_WIDTH = 344
 const DEFAULT_FILE_TREE_WIDTH = 200
 const DEFAULT_SESSION_WIDTH = 600
 const DEFAULT_TERMINAL_HEIGHT = 280
+const DEFAULT_TERMINAL_WIDTH = 420
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
+export type TerminalMode = "under" | "split" | "chat"
+export type MaximizedPanel = "terminal" | "chat" | undefined
 
 export function getAvatarColors(key?: string) {
   if (key && AVATAR_COLOR_KEYS.includes(key as AvatarColorKey)) {
@@ -258,8 +261,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
         terminal: {
           height: DEFAULT_TERMINAL_HEIGHT,
+          width: DEFAULT_TERMINAL_WIDTH,
           opened: false,
+          mode: "under" as TerminalMode,
         },
+        maximized: undefined as MaximizedPanel,
         review: {
           diffStyle: "split" as ReviewDiffStyle,
           panelOpened: true,
@@ -634,11 +640,35 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         resize(height: number) {
           setStore("terminal", "height", height)
         },
+        width: createMemo(() => store.terminal?.width ?? DEFAULT_TERMINAL_WIDTH),
+        resizeWidth(width: number) {
+          if (!store.terminal) {
+            setStore("terminal", { height: DEFAULT_TERMINAL_HEIGHT, width, opened: false, mode: "under" })
+            return
+          }
+          setStore("terminal", "width", width)
+        },
+        mode: createMemo<TerminalMode>(() => store.terminal?.mode ?? "under"),
+        setMode(mode: TerminalMode) {
+          if (!store.terminal) {
+            setStore("terminal", { height: DEFAULT_TERMINAL_HEIGHT, width: DEFAULT_TERMINAL_WIDTH, opened: false, mode })
+            return
+          }
+          setStore("terminal", "mode", mode)
+        },
+        maximized: createMemo(() => store.maximized === "terminal"),
+        toggleMaximize() {
+          setStore("maximized", store.maximized === "terminal" ? undefined : "terminal")
+        },
       },
       chat: {
         collapsed: createMemo(() => store.chat?.collapsed ?? false),
         toggle() {
           setStore("chat", { collapsed: !(store.chat?.collapsed ?? false) })
+        },
+        maximized: createMemo(() => store.maximized === "chat"),
+        toggleMaximize() {
+          setStore("maximized", store.maximized === "chat" ? undefined : "chat")
         },
       },
       review: {

@@ -60,11 +60,11 @@ import { useSessionLayout } from "@/pages/session/session-layout"
 import { isGazeTab, gazeTab } from "@/pages/gaze/tab"
 import { enabledModules } from "@/modules/registry"
 import { Icon } from "@opencode-ai/ui/icon"
-import { TooltipKeybind } from "@opencode-ai/ui/tooltip"
+import { Tooltip, TooltipKeybind } from "@opencode-ai/ui/tooltip"
+import { WorkspaceDockProvider, useWorkspaceDock } from "@/context/workspace-dock"
 import { useCommand } from "@/context/command"
 
 const seededDefaultTool = new Set<string>()
-import { useServer } from "@/context/server"
 import { syncSessionModel } from "@/pages/session/session-model-helpers"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
 import { TerminalPanel } from "@/pages/session/terminal-panel"
@@ -190,6 +190,26 @@ function createSessionHistoryLoader(input: SessionHistoryWindowInput) {
   }
 }
 
+// A full-height column between the workspace and the chat that tools portal
+// content into (e.g. the graph's node inspector). Because it lives beside the
+// [tools + terminal] stack rather than inside it, the docked terminal never
+// squeezes it — exactly like the chat panel. It collapses to zero width (and
+// drops its flex gap, via display:none) whenever nothing is docked.
+function WorkspaceRail(props: { hidden?: boolean }) {
+  const dock = useWorkspaceDock()
+  onCleanup(() => dock.setRail(undefined))
+  return (
+    <div
+      ref={(el) => dock.setRail(el)}
+      class="hidden min-h-0 shrink-0 md:order-2"
+      classList={{
+        "md:flex": dock.active() && !props.hidden,
+        "md:hidden": !dock.active() || props.hidden,
+      }}
+    />
+  )
+}
+
 export default function Page() {
   const serverSync = useServerSync()
   const layout = useLayout()
@@ -207,7 +227,6 @@ export default function Page() {
   const prompt = usePrompt()
   const comments = useComments()
   const terminal = useTerminal()
-  const server = useServer()
   const [searchParams, setSearchParams] = useSearchParams<{ prompt?: string }>()
   const location = useLocation()
   const { params, sessionKey, workspaceKey, tabs, view } = useSessionLayout()
@@ -237,45 +256,6 @@ export default function Page() {
 
   const composer = createSessionComposerState()
 
-  const workspaceTabs = createMemo(() => layout.tabs(workspaceKey))
-
-  createEffect(
-    on(
-      () => params.id,
-      (id, prev) => {
-        if (!id) return
-        if (prev) return
-
-        const pending = layout.handoff.tabs()
-        if (!pending) return
-        if (Date.now() - pending.at > 60_000) {
-          layout.handoff.clearTabs()
-          return
-        }
-        if (pending.scope !== server.scope()) return
-
-        if (pending.id !== id) return
-        layout.handoff.clearTabs()
-        if (pending.dir !== (params.dir ?? "")) return
-
-        const from = workspaceTabs().tabs()
-        if (from.all.length === 0 && !from.active) return
-
-        const current = tabs().tabs()
-        if (current.all.length > 0 || current.active) return
-
-        const all = normalizeTabs(from.all)
-        const active = from.active ? normalizeTab(from.active) : undefined
-        tabs().setAll(all)
-        tabs().setActive(active && all.includes(active) ? active : all[0])
-
-        workspaceTabs().setAll([])
-        workspaceTabs().setActive(undefined)
-      },
-      { defer: true },
-    ),
-  )
-
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const size = createSizing()
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
@@ -291,15 +271,46 @@ export default function Page() {
   const desktopGazeOpen = createMemo(() => isDesktop() && tabs().all().some(isGazeTab))
   const desktopSidePanelOpen = createMemo(() => desktopReviewOpen() || desktopFileTreeOpen() || desktopGazeOpen())
   const chatHidden = createMemo(() => isDesktop() && layout.chat.collapsed() && desktopSidePanelOpen())
+  // A "wide" workspace panel (review or a gaze tool) is open — distinct from the
+  // narrow file tree. The terminal docks under the workspace only for these.
+  const workspaceWideOpen = createMemo(() => isDesktop() && (desktopReviewOpen() || desktopGazeOpen()))
+  const termOpened = createMemo(() => isDesktop() && view().terminal.opened())
+  const termMode = createMemo(() => layout.terminal.mode())
+  const chatMaximized = createMemo(() => isDesktop() && layout.chat.maximized())
+  const terminalMaximized = createMemo(() => layout.terminal.maximized() && termOpened())
+  const anyMaximized = createMemo(() => chatMaximized() || terminalMaximized())
+  // Where the terminal lives. Kept independent of the open/closed state so toggling
+  // the terminal never re-creates the xterm; only a mode change (or maximize) moves
+  // it between slots (and the xterm restores from its serialized buffer).
+  //   under  → docked below the tools column (only when a wide panel is open)
+  //   split  → its own width-resizable column between tools and chat
+  //   chat   → stacked above the chat in the chat column
+  //   bottom → full-width dock under the whole workspace (the fallback)
+  const terminalSlot = createMemo<"under" | "split" | "chat" | "bottom">(() => {
+    if (!isDesktop()) return "bottom"
+    const mode = termMode()
+    if (mode === "split") return "split"
+    // In "chat" mode the terminal lives inside the chat column; if that column is
+    // collapsed it would be hidden, so fall back to the full-width bottom dock.
+    if (mode === "chat") return chatMaximized() || !chatHidden() ? "chat" : "bottom"
+    return workspaceWideOpen() ? "under" : "bottom"
+  })
+  // In split mode without a wide panel there's no growing tools column, so let the
+  // chat stretch to fill the space beside the terminal column.
+  const chatStretch = createMemo(
+    () => isDesktop() && !chatMaximized() && !workspaceWideOpen() && terminalSlot() === "split",
+  )
 
+  // Seed a brand-new workspace with the default tool. The tabs are workspace-scoped
+  // and persisted, so once seeded they stick across reloads and every session in the
+  // workspace; only an empty workspace gets the default.
   createEffect(() => {
     if (!layout.ready()) return
     if (!isDesktop()) return
-    const key = sessionKey()
+    const key = workspaceKey()
     if (seededDefaultTool.has(key)) return
-    const current = tabs().tabs()
     seededDefaultTool.add(key)
-    if (current.all.length > 0) return
+    if (tabs().tabs().all.length > 0) return
     const tool = enabledModules()[0]?.tools[0]
     if (!tool) return
     void tabs().open(gazeTab(tool.id))
@@ -309,23 +320,23 @@ export default function Page() {
     if (desktopReviewOpen() || desktopGazeOpen()) return `${layout.session.width()}px`
     return `calc(100% - ${layout.fileTree.width()}px)`
   })
-  const centered = createMemo(() => isDesktop() && !desktopReviewOpen() && !desktopGazeOpen())
+  const chatWidth = createMemo(() => {
+    if (chatMaximized()) return "100%"
+    if (!isDesktop()) return sessionPanelWidth()
+    if (chatStretch()) return "auto"
+    // Split mode keeps the chat at a fixed width so the terminal column has room.
+    if (workspaceWideOpen() || terminalSlot() === "split") return `${layout.session.width()}px`
+    if (terminalSlot() === "chat") return "100%"
+    return sessionPanelWidth()
+  })
+  // Center the timeline + composer when the chat owns the full width — either no
+  // wide workspace panel is open, or the chat is maximized — so they don't stretch
+  // edge to edge.
+  const centered = createMemo(() => isDesktop() && (chatMaximized() || (!desktopReviewOpen() && !desktopGazeOpen())))
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
     return file.tab(tab)
-  }
-
-  function normalizeTabs(list: string[]) {
-    const seen = new Set<string>()
-    const next: string[] = []
-    for (const item of list) {
-      const value = normalizeTab(item)
-      if (seen.has(value)) continue
-      seen.add(value)
-      next.push(value)
-    }
-    return next
   }
 
   const openReviewPanel = () => {
@@ -1739,173 +1750,236 @@ export default function Page() {
     />
   )
 
-  return (
-    <div class="relative size-full overflow-hidden flex flex-col">
-      {sessionSync() ?? ""}
-      <SessionHeader />
-      <div
-        class="flex-1 min-h-0 flex flex-col md:flex-row "
-        classList={{
-          "gap-2 p-2": settings.general.newLayoutDesigns(),
-        }}
-      >
-        <Show when={!isDesktop() && !!params.id}>
-          <Tabs value={store.mobileTab} class="h-auto">
-            <Tabs.List>
-              <Tabs.Trigger
-                value="session"
-                class="!w-1/2 !max-w-none"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "session")}
-              >
-                {language.t("session.tab.session")}
-              </Tabs.Trigger>
-              <Tabs.Trigger
-                value="changes"
-                class="!w-1/2 !max-w-none !border-r-0"
-                classes={{ button: "w-full" }}
-                onClick={() => setStore("mobileTab", "changes")}
-              >
-                {hasReview()
-                  ? language.t("session.review.filesChanged", { count: reviewCount() })
-                  : language.t("session.review.change.other")}
-              </Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
-        </Show>
+  const sidePanel = () => (
+    <SessionSidePanel
+      canReview={canReview}
+      diffs={reviewDiffs}
+      diffsReady={reviewReady}
+      empty={reviewEmptyText}
+      hasReview={hasReview}
+      reviewCount={reviewCount}
+      reviewPanel={reviewPanel}
+      activeDiff={tree.activeDiff}
+      focusReviewDiff={focusReviewDiff}
+      reviewSnap={ui.reviewSnap}
+      size={size}
+    />
+  )
 
+  return (
+    <WorkspaceDockProvider>
+      <div class="relative size-full overflow-hidden flex flex-col">
+        {sessionSync() ?? ""}
+        <SessionHeader />
         <div
+          class="flex-1 min-h-0 flex flex-col md:flex-row "
           classList={{
-            "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:flex-none md:order-2 transition-[width]": true,
-            "duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
-              !size.active() && !ui.reviewSnap,
-            "!hidden": chatHidden(),
-          }}
-          style={{
-            width: sessionPanelWidth(),
+            "gap-2 p-2": settings.general.newLayoutDesigns(),
           }}
         >
+          <Show when={!isDesktop() && !!params.id}>
+            <Tabs value={store.mobileTab} class="h-auto">
+              <Tabs.List>
+                <Tabs.Trigger
+                  value="session"
+                  class="!w-1/2 !max-w-none"
+                  classes={{ button: "w-full" }}
+                  onClick={() => setStore("mobileTab", "session")}
+                >
+                  {language.t("session.tab.session")}
+                </Tabs.Trigger>
+                <Tabs.Trigger
+                  value="changes"
+                  class="!w-1/2 !max-w-none !border-r-0"
+                  classes={{ button: "w-full" }}
+                  onClick={() => setStore("mobileTab", "changes")}
+                >
+                  {hasReview()
+                    ? language.t("session.review.filesChanged", { count: reviewCount() })
+                    : language.t("session.review.change.other")}
+                </Tabs.Trigger>
+              </Tabs.List>
+            </Tabs>
+          </Show>
+
           <div
             classList={{
-              "flex-1 min-h-0 flex flex-col bg-background-stronger": true,
-              "rounded-[10px] overflow-hidden": settings.general.newLayoutDesigns(),
-              "shadow-[var(--v2-elevation-raised)]": settings.general.newLayoutDesigns() && !!params.id,
+              "@container relative shrink-0 flex flex-col min-h-0 h-full flex-1 md:order-4 transition-[width]": true,
+              "md:flex-none": !chatStretch(),
+              "md:flex-1": chatStretch(),
+              "duration-[240ms] ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[width] motion-reduce:transition-none":
+                !size.active() && !ui.reviewSnap,
+              "!hidden": terminalMaximized() || (chatHidden() && !chatMaximized()),
+            }}
+            style={{
+              width: chatWidth(),
             }}
           >
-            <Show when={isDesktop()}>
-              <div class="shrink-0 flex items-center justify-end gap-1 px-2 pt-1.5">
-                <TooltipKeybind
-                  title={language.t("command.review.toggle")}
-                  keybind={command.keybind("review.toggle")}
-                >
-                  <Button
-                    variant="ghost"
-                    class="w-8 h-6 p-0 box-border"
-                    onClick={() => view().reviewPanel.toggle()}
-                    aria-label={language.t("command.review.toggle")}
-                    aria-expanded={view().reviewPanel.opened()}
-                    aria-controls="review-panel"
-                  >
-                    <Icon size="small" name={view().reviewPanel.opened() ? "review-active" : "review"} />
-                  </Button>
-                </TooltipKeybind>
-              </div>
+            {/* "chat" layout mode: the terminal stacks above the chat in this column */}
+            <Show when={isDesktop() && terminalSlot() === "chat" && !terminalMaximized()}>
+              <TerminalPanel dock="chat" />
             </Show>
-            <div class="flex-1 min-h-0 overflow-hidden">
-              <Switch>
-                <Match when={params.id && mobileChanges()}>
-                  <div class="relative h-full overflow-hidden">
-                    {reviewContent({
-                      diffStyle: "unified",
-                      classes: {
-                        root: "pb-8",
-                        header: "px-4",
-                        container: "px-4",
-                      },
-                      loadingClass: "px-4 py-4 text-text-weak",
-                      emptyClass: "h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-6",
-                    })}
-                  </div>
-                </Match>
-                <Match when={params.id}>
-                  <Show when={messagesReady()}>
-                    <MessageTimeline
-                      actions={actions}
-                      scroll={ui.scroll}
-                      onResumeScroll={resumeScroll}
-                      setScrollRef={setScrollRef}
-                      onScheduleScrollState={scheduleScrollState}
-                      onAutoScrollHandleScroll={autoScroll.handleScroll}
-                      onMarkScrollGesture={markScrollGesture}
-                      hasScrollGesture={hasScrollGesture}
-                      onUserScroll={markUserScroll}
-                      onHistoryScroll={historyLoader.onScrollerScroll}
-                      onAutoScrollInteraction={autoScroll.handleInteraction}
-                      shouldAnchorBottom={() =>
-                        !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
-                      }
-                      centered={centered()}
-                      setContentRef={(el) => {
-                        content = el
-                        autoScroll.contentRef(el)
+            <div
+              classList={{
+                "flex-1 min-h-0 flex flex-col bg-background-stronger": true,
+                "rounded-[10px] overflow-hidden": settings.general.newLayoutDesigns(),
+                "shadow-[var(--v2-elevation-raised)]": settings.general.newLayoutDesigns() && !!params.id,
+              }}
+            >
+              <Show when={isDesktop()}>
+                <div class="shrink-0 flex items-center justify-end gap-1 px-2 pt-1.5">
+                  <Tooltip placement="bottom" value={chatMaximized() ? "Restore chat" : "Maximize chat"}>
+                    <Button
+                      variant="ghost"
+                      class="w-8 h-6 p-0 box-border"
+                      onClick={() => layout.chat.toggleMaximize()}
+                      aria-label={chatMaximized() ? "Restore chat" : "Maximize chat"}
+                      aria-pressed={chatMaximized()}
+                    >
+                      <Icon size="small" name={chatMaximized() ? "collapse" : "expand"} />
+                    </Button>
+                  </Tooltip>
+                  <TooltipKeybind
+                    title={language.t("command.review.toggle")}
+                    keybind={command.keybind("review.toggle")}
+                  >
+                    <Button
+                      variant="ghost"
+                      class="w-8 h-6 p-0 box-border"
+                      onClick={() => view().reviewPanel.toggle()}
+                      aria-label={language.t("command.review.toggle")}
+                      aria-expanded={view().reviewPanel.opened()}
+                      aria-controls="review-panel"
+                    >
+                      <Icon size="small" name={view().reviewPanel.opened() ? "review-active" : "review"} />
+                    </Button>
+                  </TooltipKeybind>
+                </div>
+              </Show>
+              <div class="flex-1 min-h-0 overflow-hidden">
+                <Switch>
+                  <Match when={params.id && mobileChanges()}>
+                    <div class="relative h-full overflow-hidden">
+                      {reviewContent({
+                        diffStyle: "unified",
+                        classes: {
+                          root: "pb-8",
+                          header: "px-4",
+                          container: "px-4",
+                        },
+                        loadingClass: "px-4 py-4 text-text-weak",
+                        emptyClass: "h-full pb-64 -mt-4 flex flex-col items-center justify-center text-center gap-6",
+                      })}
+                    </div>
+                  </Match>
+                  <Match when={params.id}>
+                    <Show when={messagesReady()}>
+                      <MessageTimeline
+                        actions={actions}
+                        scroll={ui.scroll}
+                        onResumeScroll={resumeScroll}
+                        setScrollRef={setScrollRef}
+                        onScheduleScrollState={scheduleScrollState}
+                        onAutoScrollHandleScroll={autoScroll.handleScroll}
+                        onMarkScrollGesture={markScrollGesture}
+                        hasScrollGesture={hasScrollGesture}
+                        onUserScroll={markUserScroll}
+                        onHistoryScroll={historyLoader.onScrollerScroll}
+                        onAutoScrollInteraction={autoScroll.handleInteraction}
+                        shouldAnchorBottom={() =>
+                          !location.hash && !store.messageId && !ui.pendingMessage && !autoScroll.userScrolled()
+                        }
+                        centered={centered()}
+                        setContentRef={(el) => {
+                          content = el
+                          autoScroll.contentRef(el)
 
-                        const root = scroller
-                        if (root) scheduleScrollState(root)
-                      }}
-                      historyShift={historyLoader.shift()}
-                      userMessages={historyLoader.userMessages()}
-                      anchor={anchor}
-                      setRevealMessage={(fn) => {
-                        revealMessage = fn
-                      }}
-                    />
-                  </Show>
-                </Match>
-                <Match when={true}>
-                  <NewSessionView worktree={newSessionWorktree()} />
-                </Match>
-              </Switch>
+                          const root = scroller
+                          if (root) scheduleScrollState(root)
+                        }}
+                        historyShift={historyLoader.shift()}
+                        userMessages={historyLoader.userMessages()}
+                        anchor={anchor}
+                        setRevealMessage={(fn) => {
+                          revealMessage = fn
+                        }}
+                      />
+                    </Show>
+                  </Match>
+                  <Match when={true}>
+                    <NewSessionView worktree={newSessionWorktree()} />
+                  </Match>
+                </Switch>
+              </div>
+
+              <Show when={params.id || !newSessionDesign()}>{composerRegion("dock")}</Show>
             </div>
 
-            <Show when={params.id || !newSessionDesign()}>{composerRegion("dock")}</Show>
+            <Show when={workspaceWideOpen() && !chatMaximized()}>
+              <div onPointerDown={() => size.start()}>
+                <ResizeHandle
+                  classList={{
+                    "-left-1": settings.general.newLayoutDesigns(),
+                  }}
+                  direction="horizontal"
+                  edge="start"
+                  size={layout.session.width()}
+                  min={450}
+                  max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.45}
+                  onResize={(width) => {
+                    size.touch()
+                    layout.session.resize(width)
+                  }}
+                />
+              </div>
+            </Show>
           </div>
 
-          <Show when={desktopReviewOpen() || desktopGazeOpen()}>
-            <div onPointerDown={() => size.start()}>
-              <ResizeHandle
-                classList={{
-                  "-left-1": settings.general.newLayoutDesigns(),
-                }}
-                direction="horizontal"
-                edge="start"
-                size={layout.session.width()}
-                min={450}
-                max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.45}
-                onResize={(width) => {
-                  size.touch()
-                  layout.session.resize(width)
-                }}
-              />
+          {/* Tools column (review / file tree / gaze) — kept mounted across mode and
+            maximize changes so the graph never reloads; the terminal docks under it
+            only in "under" mode. */}
+          <Show when={isDesktop()}>
+            <div
+              class="flex min-h-0 min-w-0 flex-col md:order-1"
+              classList={{
+                "md:flex-1": workspaceWideOpen(),
+                "md:flex-none": !workspaceWideOpen(),
+                "md:!hidden": anyMaximized(),
+              }}
+            >
+              <div class="flex min-h-0 min-w-0 flex-1">{sidePanel()}</div>
+              <Show when={terminalSlot() === "under" && !anyMaximized()}>
+                <TerminalPanel dock="under" />
+              </Show>
+            </div>
+          </Show>
+
+          {/* Inspector rail — beside the [tools + terminal] stack, exempt from the
+            terminal's vertical squeeze. */}
+          <Show when={isDesktop()}>
+            <WorkspaceRail hidden={anyMaximized()} />
+          </Show>
+
+          {/* "split" layout mode: the terminal is its own width-resizable column. */}
+          <Show when={isDesktop() && terminalSlot() === "split" && !anyMaximized()}>
+            <div class="flex min-h-0 md:order-3">
+              <TerminalPanel dock="split" />
+            </div>
+          </Show>
+
+          {/* Maximized terminal fills the whole workspace. */}
+          <Show when={terminalMaximized()}>
+            <div class="flex min-h-0 flex-1 md:order-1">
+              <TerminalPanel dock="max" />
             </div>
           </Show>
         </div>
 
-        <SessionSidePanel
-          canReview={canReview}
-          diffs={reviewDiffs}
-          diffsReady={reviewReady}
-          empty={reviewEmptyText}
-          hasReview={hasReview}
-          reviewCount={reviewCount}
-          reviewPanel={reviewPanel}
-          activeDiff={tree.activeDiff}
-          focusReviewDiff={focusReviewDiff}
-          reviewSnap={ui.reviewSnap}
-          size={size}
-        />
+        {/* Full-width bottom dock (no wide workspace panel open, or mobile). */}
+        <Show when={terminalSlot() === "bottom" && !terminalMaximized()}>
+          <TerminalPanel dock="bottom" />
+        </Show>
       </div>
-
-      <TerminalPanel />
-    </div>
+    </WorkspaceDockProvider>
   )
 }

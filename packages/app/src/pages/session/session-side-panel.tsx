@@ -80,6 +80,7 @@ export function SessionSidePanel(props: {
       }),
   )
   const gazeOpen = createMemo(() => isDesktop() && tabs().all().some(isGazeTab))
+  const closeTab = (tab: string) => tabs().close(tab)
   const open = createMemo(() => reviewOpen() || fileOpen() || gazeOpen())
   const tabsRegionOpen = createMemo(() => reviewOpen() || gazeOpen())
   const reviewTab = createMemo(() => isDesktop())
@@ -341,7 +342,7 @@ export function SessionSidePanel(props: {
                           </Tabs.Trigger>
                         </Show>
                         <SortableProvider ids={openedTabs()}>
-                          <For each={openedTabs()}>{(tab) => <SortableTab tab={tab} onTabClose={tabs().close} />}</For>
+                          <For each={openedTabs()}>{(tab) => <SortableTab tab={tab} onTabClose={closeTab} />}</For>
                         </SortableProvider>
                         <div class="bg-background-stronger h-full shrink-0 sticky right-0 z-10 flex items-center justify-center pr-3">
                           <TooltipKeybind

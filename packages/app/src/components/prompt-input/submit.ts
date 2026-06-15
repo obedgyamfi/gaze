@@ -9,7 +9,6 @@ import { useServer } from "@/context/server"
 import { useTabs } from "@/context/tabs"
 import { useServerSync } from "@/context/server-sync"
 import { useLanguage } from "@/context/language"
-import { useLayout } from "@/context/layout"
 import { useLocal } from "@/context/local"
 import { usePermission } from "@/context/permission"
 import { type ContextItem, type ImageAttachmentPart, type Prompt, usePrompt } from "@/context/prompt"
@@ -212,7 +211,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
   const local = useLocal()
   const permission = usePermission()
   const prompt = usePrompt()
-  const layout = useLayout()
   const language = useLanguage()
   const params = useParams()
   const [search] = useSearchParams<{ draftId?: string }>()
@@ -385,7 +383,6 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         session = created
         if (shouldAutoAccept) permission.enableAutoAccept(session.id, sessionDirectory)
         local.session.promote(sessionDirectory, session.id)
-        layout.handoff.setTabs(base64Encode(sessionDirectory), session.id)
         const draftID = search.draftId
         if (draftID)
           tabs.promoteDraft(draftID, {

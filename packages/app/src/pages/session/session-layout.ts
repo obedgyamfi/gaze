@@ -20,7 +20,10 @@ export const useSessionLayout = () => {
     params,
     sessionKey,
     workspaceKey,
-    tabs: createMemo(() => layout.tabs(sessionKey)),
+    // Tool/file tabs are scoped to the workspace (the project dir), not the
+    // individual chat session, so the same Graph/Proxy/Repeater layout is shared
+    // across every session in the workspace — a new session only swaps the chat.
+    tabs: createMemo(() => layout.tabs(workspaceKey)),
     view: createMemo(() => layout.view(sessionKey)),
   }
 }
