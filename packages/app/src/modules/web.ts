@@ -9,6 +9,7 @@ export const webModule: SecurityModule = {
     { id: "graph", label: "Graph", icon: "fork", component: () => import("@/pages/gaze/web/graph") },
     { id: "proxy", label: "Proxy", icon: "server", component: () => import("@/pages/gaze/web/proxy") },
     { id: "repeater", label: "Repeater", icon: "reset", component: () => import("@/pages/gaze/web/repeater") },
+    { id: "findings", label: "Findings", icon: "shield", component: () => import("@/pages/gaze/web/findings") },
     { id: "interceptor", label: "Interceptor", icon: "shield" },
   ],
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@morgana/web-core",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Host-agnostic core for the Morgana web-security toolset: base + enriched attack-surface graph builders, the read GraphStore, the capture-source seam, and host-neutral tool specs. Consumed by @morgana/plugin-web and @morgana/mcp-web.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

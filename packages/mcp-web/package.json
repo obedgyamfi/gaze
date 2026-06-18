@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@morgana/mcp-web",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "MCP-server adapter for the Morgana web-security toolset. Thin: binds @morgana/web-core tool specs to an MCP stdio server, for the CLI / external MCP clients / opencode's MCP-connect flow.",
+  "bin": {
+    "morgana-mcp-web": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@morgana/web-core": "workspace:*",
+    "@morgana/capture-store": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tsconfig/node22": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "24.12.2",
+    "typescript": "catalog:"
+  }
+}

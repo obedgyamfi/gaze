@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@morgana/capture-store",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Durable capture store (bun:sqlite) for the Morgana web plugin. Persists proxy/repeater/graph request data and implements web-core's CaptureSource, read in-process by the sidecar plugin. The graph is derived from captures, so this is the single durable source.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bun": "./src/bun.ts",
+    "./node": "./src/node.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@morgana/web-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -82,6 +82,10 @@ const api: ElectronAPI = {
     comment: (id, text) => ipcRenderer.invoke("capture-comment", id, text),
     repeaterSend: (req) => ipcRenderer.invoke("repeater-send", req),
   },
+  morgana: {
+    findings: () => ipcRenderer.invoke("morgana-findings"),
+    notes: () => ipcRenderer.invoke("morgana-notes"),
+  },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),
   setDefaultServerUrl: (url) => ipcRenderer.invoke("set-default-server-url", url),

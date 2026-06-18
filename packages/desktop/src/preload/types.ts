@@ -70,6 +70,31 @@ export type CaptureAPI = {
   repeaterSend: (req: RepeaterRequest) => Promise<CaptureRecord>
 }
 
+// ── Morgana findings/notes (read from the persisted engagement db) ────────────
+export type FindingSummary = {
+  id: string
+  status: string
+  vulnClass: string
+  severity: string
+  title: string
+  detail: string
+  evidenceId: string
+  verdict: string
+  signal: string
+  createdAt: number
+}
+export type NoteSummary = {
+  id: string
+  nodeId?: string
+  text: string
+  tags: string[]
+  createdAt: number
+}
+export type MorganaAPI = {
+  findings: () => Promise<FindingSummary[]>
+  notes: () => Promise<NoteSummary[]>
+}
+
 export type LinuxDisplayBackend = "wayland" | "auto"
 export type TitlebarTheme = {
   mode: "light" | "dark"
@@ -90,6 +115,7 @@ export type ElectronAPI = {
   updater: UpdaterAPI
   browser: BrowserAPI
   capture: CaptureAPI
+  morgana: MorganaAPI
   consumeInitialDeepLinks: () => Promise<string[]>
   getDefaultServerUrl: () => Promise<string | null>
   setDefaultServerUrl: (url: string | null) => Promise<void>

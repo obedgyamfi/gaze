@@ -14,7 +14,18 @@
       "description": "Contains opencode logs and data",
     },
   },
-  "mcp": {},
+  // Morgana web-security tools as a local MCP server (the standard opencode way):
+  // opencode spawns this command and connects to it as an MCP client; its tools surface
+  // as morgana-web_web_graph_overview, …_web_oracle_check, etc. The server resolves the
+  // capture db from XDG_STATE_HOME (the desktop sets it) or the MORGANA_CAPTURE_DB env.
+  // NOTE: `command` runs from the project/instance dir — use an ABSOLUTE path if you open
+  // a project other than this opencode repo.
+  "mcp": {
+    "morgana-web": {
+      "type": "local",
+      "command": ["bun", "packages/mcp-web/src/index.ts"],
+    },
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,

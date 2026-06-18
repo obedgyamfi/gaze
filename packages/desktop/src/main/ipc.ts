@@ -14,7 +14,10 @@ import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
 import { BrowserController } from "./browser"
 import { CaptureController } from "./capture/controller"
+import { attachCapturePersistence, capturesDbPath } from "./capture/persist"
 import type { CaptureFilter, HttpSide, RepeaterRequest } from "./capture/types"
+import { openNodeStores } from "@morgana/capture-store/node"
+import type { FindingSummary, NoteSummary } from "../preload/types"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -49,6 +52,44 @@ captureController.attachTo(browserController)
 export function registerIpcHandlers(deps: Deps) {
   const updaterSubscriptions = createUpdaterSubscriptions()
   app.once("will-quit", updaterSubscriptions.clear)
+
+  // Durable capture persistence (proxy/repeater/graph data survives restarts and
+  // is read by the sidecar plugin from the same SQLite file). App paths are ready
+  // here; the sidecar resolves the same path via XDG_STATE_HOME=userData.
+  // Capture persistence + the findings/notes reader use node:sqlite. If it's
+  // unavailable in this Electron's Node, degrade gracefully — live capture and the
+  // rest of the app keep working; the agent's plugin reads whatever it can.
+  const dbPath = capturesDbPath(app.getPath("userData"))
+  try {
+    const disposeCapturePersistence = attachCapturePersistence(captureController, dbPath)
+    app.once("will-quit", disposeCapturePersistence)
+  } catch (error) {
+    console.error("[morgana] capture persistence disabled:", error)
+  }
+
+  let morganaStores: ReturnType<typeof openNodeStores> | undefined
+  try {
+    morganaStores = openNodeStores(dbPath)
+  } catch (error) {
+    console.error("[morgana] findings store unavailable:", error)
+  }
+  ipcMain.handle("morgana-findings", (): FindingSummary[] =>
+    (morganaStores?.findings.list() ?? []).map((f) => ({
+      id: f.id,
+      status: f.status,
+      vulnClass: f.vulnClass,
+      severity: f.severity,
+      title: f.title,
+      detail: f.detail,
+      evidenceId: f.evidenceId,
+      verdict: f.evidence.verdict,
+      signal: f.evidence.signal,
+      createdAt: f.createdAt,
+    })),
+  )
+  ipcMain.handle("morgana-notes", (): NoteSummary[] =>
+    (morganaStores?.notes.list() ?? []).map((n) => ({ id: n.id, nodeId: n.nodeId, text: n.text, tags: n.tags, createdAt: n.createdAt })),
+  )
 
   ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, opts?: { url?: string }) =>
     browserController.launch(opts),
