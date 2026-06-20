@@ -58,33 +58,34 @@ const api: ElectronAPI = {
     install: () => ipcRenderer.invoke("updater-install"),
   },
   browser: {
-    launch: (opts) => ipcRenderer.invoke("browser-launch", opts),
-    close: () => ipcRenderer.invoke("browser-close"),
-    status: () => ipcRenderer.invoke("browser-status"),
-    subscribe: (cb) => {
+    launch: (projectDir, opts) => ipcRenderer.invoke("browser-launch", projectDir, opts),
+    close: (projectDir) => ipcRenderer.invoke("browser-close", projectDir),
+    status: (projectDir) => ipcRenderer.invoke("browser-status", projectDir),
+    subscribe: (projectDir, cb) => {
       const handler = (_: unknown, status: BrowserStatus) => cb(status)
       ipcRenderer.on("browser-status", handler)
-      void ipcRenderer.invoke("browser-subscribe")
+      void ipcRenderer.invoke("browser-subscribe", projectDir)
       return () => ipcRenderer.removeListener("browser-status", handler)
     },
   },
   capture: {
     subscribe: (cb) => {
-      const handler = (_: unknown, event: CaptureStreamEvent) => cb(event)
+      const handler = (_: unknown, projectDir: string, event: CaptureStreamEvent) => cb(projectDir, event)
       ipcRenderer.on("capture-event", handler)
       void ipcRenderer.invoke("capture-subscribe")
       return () => ipcRenderer.removeListener("capture-event", handler)
     },
-    list: (filter) => ipcRenderer.invoke("capture-list", filter),
-    getBody: (id, side) => ipcRenderer.invoke("capture-get-body", id, side),
-    clear: () => ipcRenderer.invoke("capture-clear"),
-    star: (id, on) => ipcRenderer.invoke("capture-star", id, on),
-    comment: (id, text) => ipcRenderer.invoke("capture-comment", id, text),
-    repeaterSend: (req) => ipcRenderer.invoke("repeater-send", req),
+    list: (projectDir, filter) => ipcRenderer.invoke("capture-list", projectDir, filter),
+    load: (projectDir) => ipcRenderer.invoke("capture-load", projectDir),
+    getBody: (id, side, projectDir) => ipcRenderer.invoke("capture-get-body", id, side, projectDir),
+    clear: (projectDir) => ipcRenderer.invoke("capture-clear", projectDir),
+    star: (projectDir, id, on) => ipcRenderer.invoke("capture-star", projectDir, id, on),
+    comment: (projectDir, id, text) => ipcRenderer.invoke("capture-comment", projectDir, id, text),
+    repeaterSend: (projectDir, req) => ipcRenderer.invoke("repeater-send", projectDir, req),
   },
   morgana: {
-    findings: () => ipcRenderer.invoke("morgana-findings"),
-    notes: () => ipcRenderer.invoke("morgana-notes"),
+    findings: (projectDir) => ipcRenderer.invoke("morgana-findings", projectDir),
+    notes: (projectDir) => ipcRenderer.invoke("morgana-notes", projectDir),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),

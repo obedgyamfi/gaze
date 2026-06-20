@@ -1,21 +1,26 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { useLocation } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { usePlatform, type BrowserStatus } from "@/context/platform"
 import { useWebCapture } from "@/context/web-capture"
+import { decode64 } from "@/utils/base64"
 import { showToast } from "@/utils/toast"
 
 export default function WebOverview() {
   const platform = usePlatform()
   const browser = platform.browser
   const capture = useWebCapture()
+  const location = useLocation()
+  // Each workspace (project dir) has its own browser; launch/status are scoped to it.
+  const projectDir = () => decode64(location.pathname.split("/").filter(Boolean)[0] ?? "") || ""
   const [status, setStatus] = createSignal<BrowserStatus>({ running: false })
   const [busy, setBusy] = createSignal(false)
 
   onMount(() => {
     if (!browser) return
-    void browser.status().then(setStatus)
-    const unsubscribe = browser.subscribe(setStatus)
+    void browser.status(projectDir()).then(setStatus)
+    const unsubscribe = browser.subscribe(projectDir(), setStatus)
     onCleanup(unsubscribe)
   })
 
@@ -23,9 +28,7 @@ export default function WebOverview() {
     if (!browser || busy()) return
     setBusy(true)
     try {
-      // Tag everything this browser captures to the current engagement.
-      capture.setCaptureWorkspace()
-      const next = await browser.launch()
+      const next = await browser.launch(projectDir())
       setStatus(next)
     } catch (error) {
       showToast({
@@ -42,7 +45,7 @@ export default function WebOverview() {
     if (!browser || busy()) return
     setBusy(true)
     try {
-      await browser.close()
+      await browser.close(projectDir())
     } finally {
       setBusy(false)
     }

@@ -247,20 +247,21 @@ const createPlatform = (): Platform => {
     parseMarkdown: (markdown: string) => window.api.parseMarkdownCommand(markdown),
 
     browser: {
-      launch: (opts) => window.api.browser.launch(opts),
-      close: () => window.api.browser.close(),
-      status: () => window.api.browser.status(),
-      subscribe: (cb) => window.api.browser.subscribe(cb),
+      launch: (projectDir, opts) => window.api.browser.launch(projectDir, opts),
+      close: (projectDir) => window.api.browser.close(projectDir),
+      status: (projectDir) => window.api.browser.status(projectDir),
+      subscribe: (projectDir, cb) => window.api.browser.subscribe(projectDir, cb),
     },
 
     capture: {
       subscribe: (cb) => window.api.capture.subscribe(cb),
-      list: (filter) => window.api.capture.list(filter),
-      getBody: (id, side) => window.api.capture.getBody(id, side),
-      clear: () => window.api.capture.clear(),
-      star: (id, on) => window.api.capture.star(id, on),
-      comment: (id, text) => window.api.capture.comment(id, text),
-      repeaterSend: (req) => window.api.capture.repeaterSend(req),
+      list: (projectDir, filter) => window.api.capture.list(projectDir, filter),
+      load: (projectDir) => window.api.capture.load(projectDir),
+      getBody: (id, side, projectDir) => window.api.capture.getBody(id, side, projectDir),
+      clear: (projectDir) => window.api.capture.clear(projectDir),
+      star: (projectDir, id, on) => window.api.capture.star(projectDir, id, on),
+      comment: (projectDir, id, text) => window.api.capture.comment(projectDir, id, text),
+      repeaterSend: (projectDir, req) => window.api.capture.repeaterSend(projectDir, req),
     },
 
     webviewZoom,

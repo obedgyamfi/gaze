@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { createServer } from "node:net"
-import { access, mkdtemp, rm } from "node:fs/promises"
+import { access } from "node:fs/promises"
+import { mkdirSync } from "node:fs"
 import { constants } from "node:fs"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { app } from "electron"
+import { workspaceKey, workspaceProfileDir } from "@morgana/capture-store"
 
 export type BrowserStatus = {
   running: boolean
@@ -15,9 +16,9 @@ export type BrowserStatus = {
 }
 
 type Listener = (status: BrowserStatus) => void
+type LifecycleListener = (projectDir: string, status: BrowserStatus) => void
 
 // Candidate Chromium-family executables per platform, in preference order.
-// Chrome first (most common capture target), then Edge (also Chromium), then Chromium.
 function candidateExecutables(): string[] {
   const env = process.env
   if (process.platform === "win32") {
@@ -75,35 +76,61 @@ function findFreePort(): Promise<number> {
   })
 }
 
+interface Instance {
+  projectDir: string
+  child: ChildProcess | undefined
+  status: BrowserStatus
+  listeners: Set<Listener>
+}
+
+// One Chromium per WORKSPACE (project directory), each with its OWN persistent profile
+// so engagement sessions stay isolated and never bleed across workspaces. Spawned
+// lazily on launch. The CaptureController subscribes to the lifecycle hook to attach a
+// capture client to whichever workspace's browser is up.
 export class BrowserController {
-  private child: ChildProcess | undefined
-  private profileDir: string | undefined
-  private status: BrowserStatus = { running: false }
-  private listeners = new Set<Listener>()
+  private readonly instances = new Map<string, Instance>()
+  private readonly lifecycleListeners = new Set<LifecycleListener>()
 
-  constructor() {
-    app.once("will-quit", () => {
-      void this.close()
-    })
+  constructor(private readonly userData: string) {
+    app.once("will-quit", () => this.closeAll())
   }
 
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener)
-    listener(this.status)
-    return () => this.listeners.delete(listener)
+  private instance(projectDir: string): Instance {
+    const key = workspaceKey(projectDir)
+    let i = this.instances.get(key)
+    if (!i) {
+      i = { projectDir, child: undefined, status: { running: false }, listeners: new Set() }
+      this.instances.set(key, i)
+    }
+    return i
   }
 
-  getStatus(): BrowserStatus {
-    return this.status
+  subscribe(projectDir: string, listener: Listener): () => void {
+    const i = this.instance(projectDir)
+    i.listeners.add(listener)
+    listener(i.status)
+    return () => i.listeners.delete(listener)
   }
 
-  private emit(next: BrowserStatus) {
-    this.status = next
-    for (const listener of this.listeners) listener(next)
+  getStatus(projectDir: string): BrowserStatus {
+    return this.instances.get(workspaceKey(projectDir))?.status ?? { running: false }
   }
 
-  async launch(opts?: { url?: string }): Promise<BrowserStatus> {
-    if (this.child && this.status.running) return this.status
+  /** Notify the capture layer whenever any workspace's browser starts/stops. */
+  onLifecycle(listener: LifecycleListener): () => void {
+    this.lifecycleListeners.add(listener)
+    return () => this.lifecycleListeners.delete(listener)
+  }
+
+  private setStatus(i: Instance, status: BrowserStatus): void {
+    i.status = status
+    for (const l of i.listeners) l(status)
+    for (const l of this.lifecycleListeners) l(i.projectDir, status)
+  }
+
+  async launch(projectDir: string, opts?: { url?: string }): Promise<BrowserStatus> {
+    const i = this.instance(projectDir)
+    if (i.child && i.status.running) return i.status
 
     const executable = await findExecutable()
     if (!executable) {
@@ -113,12 +140,9 @@ export class BrowserController {
     }
 
     const port = await findFreePort()
-    const profileDir = await mkdtemp(join(tmpdir(), "morgana-web-"))
-    this.profileDir = profileDir
+    const profileDir = workspaceProfileDir(this.userData, projectDir)
+    mkdirSync(profileDir, { recursive: true })
 
-    // Launch blank and let the capture client navigate to the target AFTER it has
-    // attached and enabled the Network domain — otherwise the initial page load
-    // races ahead of capture and is missed.
     const url = opts?.url?.trim() || undefined
     const args = [
       `--remote-debugging-port=${port}`,
@@ -130,41 +154,44 @@ export class BrowserController {
     ]
 
     const child = spawn(executable, args, { detached: false, stdio: "ignore" })
-    this.child = child
+    i.child = child
 
     child.on("exit", () => {
-      this.child = undefined
-      this.emit({ running: false })
-      void this.cleanupProfile()
+      i.child = undefined
+      this.setStatus(i, { running: false })
     })
     child.on("error", () => {
-      this.child = undefined
-      this.emit({ running: false })
-      void this.cleanupProfile()
+      i.child = undefined
+      this.setStatus(i, { running: false })
     })
 
     const next: BrowserStatus = { running: true, pid: child.pid, port, url, executable }
-    this.emit(next)
+    this.setStatus(i, next)
     return next
   }
 
-  async close(): Promise<void> {
-    const child = this.child
-    if (!child) return
-    this.child = undefined
+  async close(projectDir: string): Promise<void> {
+    const i = this.instances.get(workspaceKey(projectDir))
+    if (!i?.child) return
+    const child = i.child
+    i.child = undefined
     try {
       child.kill()
     } catch {
       // already gone
     }
-    this.emit({ running: false })
-    await this.cleanupProfile()
+    this.setStatus(i, { running: false })
   }
 
-  private async cleanupProfile() {
-    const dir = this.profileDir
-    this.profileDir = undefined
-    if (!dir) return
-    await rm(dir, { recursive: true, force: true }).catch(() => undefined)
+  private closeAll(): void {
+    for (const i of this.instances.values()) {
+      if (i.child) {
+        try {
+          i.child.kill()
+        } catch {
+          // ignore
+        }
+      }
+    }
   }
 }

@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { join } from "node:path"
 // ── Morgana `web` MCP server — MCP adapter ────────────────────────────────────
 // Thin binding of @morgana/web-core's host-neutral tool specs to an MCP server
 // over stdio. Same specs the opencode plugin binds; no tool logic here. For the
@@ -21,6 +20,7 @@ import {
   type Stores,
 } from "@morgana/web-core"
 import { openBunCaptureStore, openBunStores } from "@morgana/capture-store/bun"
+import { workspaceDbPath } from "@morgana/capture-store"
 
 const emptyCaptureSource: CaptureSource = {
   async list() {
@@ -67,8 +67,12 @@ export function createServer(opts?: { scopeHosts?: string[]; captureSource?: Cap
 }
 
 async function main(): Promise<void> {
-  const stateHome = process.env["XDG_STATE_HOME"]
-  const dbPath = process.env["MORGANA_CAPTURE_DB"] ?? (stateHome ? join(stateHome, "morgana", "captures.db") : undefined)
+  // Per-WORKSPACE db: opencode spawns a separate mcp-web per project directory with
+  // cwd = that directory (InstanceState is per-directory), so resolving the db from
+  // cwd scopes each workspace to its own capture/findings data. MORGANA_CAPTURE_DB
+  // is an explicit override (testing / non-desktop hosts).
+  const dataDir = process.env["MORGANA_DATA_DIR"] ?? process.env["XDG_STATE_HOME"]
+  const dbPath = process.env["MORGANA_CAPTURE_DB"] ?? (dataDir ? workspaceDbPath(dataDir, process.cwd()) : undefined)
   const scopeHosts = (process.env["MORGANA_SCOPE_HOSTS"] ?? "")
     .split(",")
     .map((s) => s.trim())

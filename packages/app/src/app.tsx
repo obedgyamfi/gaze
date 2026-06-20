@@ -143,8 +143,8 @@ declare global {
       setTitlebar?: (theme: { mode: "light" | "dark" }) => Promise<void>
       exportDebugLogs?: () => Promise<string>
       morgana?: {
-        findings: () => Promise<import("@/pages/gaze/web/findings").MorganaFinding[]>
-        notes: () => Promise<import("@/pages/gaze/web/findings").MorganaNote[]>
+        findings: (projectDir: string) => Promise<import("@/pages/gaze/web/findings").MorganaFinding[]>
+        notes: (projectDir: string) => Promise<import("@/pages/gaze/web/findings").MorganaNote[]>
       }
     }
   }

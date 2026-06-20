@@ -1,5 +1,7 @@
 import { createSignal, For, onMount, Show } from "solid-js"
+import { useLocation } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
+import { decode64 } from "@/utils/base64"
 
 // Wire shapes from the desktop morgana IPC (see preload FindingSummary/NoteSummary).
 export type MorganaFinding = {
@@ -35,12 +37,17 @@ export default function WebFindings() {
   const [notes, setNotes] = createSignal<MorganaNote[]>([])
   const [loaded, setLoaded] = createSignal(false)
 
+  const location = useLocation()
+  // Scope to the current workspace (project dir) — the first base64 path segment.
+  const projectDir = () => decode64(location.pathname.split("/").filter(Boolean)[0] ?? "") || ""
+
   const refresh = async () => {
     const api = window.api?.morgana
-    if (api) {
+    const dir = projectDir()
+    if (api && dir) {
       try {
-        setFindings(await api.findings())
-        setNotes(await api.notes())
+        setFindings(await api.findings(dir))
+        setNotes(await api.notes(dir))
       } catch {
         /* db not ready yet — show empty */
       }

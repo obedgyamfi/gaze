@@ -14,9 +14,8 @@ import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
 import { BrowserController } from "./browser"
 import { CaptureController } from "./capture/controller"
-import { attachCapturePersistence, capturesDbPath } from "./capture/persist"
+import { WorkspaceStores } from "./capture/workspace-stores"
 import type { CaptureFilter, HttpSide, RepeaterRequest } from "./capture/types"
-import { openNodeStores } from "@morgana/capture-store/node"
 import type { FindingSummary, NoteSummary } from "../preload/types"
 
 const pickerFilters = (ext?: string[]) => {
@@ -45,36 +44,31 @@ type Deps = {
   recordFatalRendererError: (error: FatalRendererError) => Promise<void> | void
 }
 
-const browserController = new BrowserController()
-const captureController = new CaptureController()
-captureController.attachTo(browserController)
-
 export function registerIpcHandlers(deps: Deps) {
   const updaterSubscriptions = createUpdaterSubscriptions()
   app.once("will-quit", updaterSubscriptions.clear)
 
-  // Durable capture persistence (proxy/repeater/graph data survives restarts and
-  // is read by the sidecar plugin from the same SQLite file). App paths are ready
-  // here; the sidecar resolves the same path via XDG_STATE_HOME=userData.
-  // Capture persistence + the findings/notes reader use node:sqlite. If it's
-  // unavailable in this Electron's Node, degrade gracefully — live capture and the
-  // rest of the app keep working; the agent's plugin reads whatever it can.
-  const dbPath = capturesDbPath(app.getPath("userData"))
-  try {
-    const disposeCapturePersistence = attachCapturePersistence(captureController, dbPath)
-    app.once("will-quit", disposeCapturePersistence)
-  } catch (error) {
-    console.error("[morgana] capture persistence disabled:", error)
-  }
+  // Per-WORKSPACE browser + capture + persistence. Each project directory gets its own
+  // Chromium (persistent profile), capture client, and SQLite db at
+  // <userData>/morgana/<sha1(dir)>/ — the same path the mcp server derives from its
+  // cwd — so engagements are fully isolated and the agent reads exactly what the
+  // desktop wrote for that workspace. node:sqlite failures degrade gracefully.
+  const userData = app.getPath("userData")
+  const workspaceStores = new WorkspaceStores(userData)
+  const browserController = new BrowserController(userData)
+  const captureController = new CaptureController(workspaceStores)
+  captureController.attachTo(browserController)
+  app.once("will-quit", () => workspaceStores.dispose())
 
-  let morganaStores: ReturnType<typeof openNodeStores> | undefined
-  try {
-    morganaStores = openNodeStores(dbPath)
-  } catch (error) {
-    console.error("[morgana] findings store unavailable:", error)
-  }
-  ipcMain.handle("morgana-findings", (): FindingSummary[] =>
-    (morganaStores?.findings.list() ?? []).map((f) => ({
+  // Load a workspace's PERSISTED captures (for restoring state on open).
+  ipcMain.handle("capture-load", async (_event: IpcMainInvokeEvent, projectDir: string) => {
+    const store = workspaceStores.captures(projectDir)
+    if (!store) return { records: [], navs: [], forms: [] }
+    return { records: await store.list(), navs: await store.navs(), forms: await store.forms() }
+  })
+
+  ipcMain.handle("morgana-findings", (_event: IpcMainInvokeEvent, projectDir: string): FindingSummary[] =>
+    (workspaceStores.findings(projectDir)?.findings.list() ?? []).map((f) => ({
       id: f.id,
       status: f.status,
       vulnClass: f.vulnClass,
@@ -87,17 +81,19 @@ export function registerIpcHandlers(deps: Deps) {
       createdAt: f.createdAt,
     })),
   )
-  ipcMain.handle("morgana-notes", (): NoteSummary[] =>
-    (morganaStores?.notes.list() ?? []).map((n) => ({ id: n.id, nodeId: n.nodeId, text: n.text, tags: n.tags, createdAt: n.createdAt })),
+  ipcMain.handle("morgana-notes", (_event: IpcMainInvokeEvent, projectDir: string): NoteSummary[] =>
+    (workspaceStores.findings(projectDir)?.notes.list() ?? []).map((n) => ({ id: n.id, nodeId: n.nodeId, text: n.text, tags: n.tags, createdAt: n.createdAt })),
   )
 
-  ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, opts?: { url?: string }) =>
-    browserController.launch(opts),
+  ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, projectDir: string, opts?: { url?: string }) =>
+    browserController.launch(projectDir, opts),
   )
-  ipcMain.handle("browser-close", () => browserController.close())
-  ipcMain.handle("browser-status", () => browserController.getStatus())
-  ipcMain.handle("browser-subscribe", (event) => {
-    const dispose = browserController.subscribe((status) => {
+  ipcMain.handle("browser-close", (_event: IpcMainInvokeEvent, projectDir: string) => browserController.close(projectDir))
+  ipcMain.handle("browser-status", (_event: IpcMainInvokeEvent, projectDir: string) =>
+    browserController.getStatus(projectDir),
+  )
+  ipcMain.handle("browser-subscribe", (event, projectDir: string) => {
+    const dispose = browserController.subscribe(projectDir, (status) => {
       if (event.sender.isDestroyed()) {
         dispose()
         return
@@ -108,28 +104,33 @@ export function registerIpcHandlers(deps: Deps) {
   })
 
   ipcMain.handle("capture-subscribe", (event) => {
-    const dispose = captureController.subscribe((captureEvent) => {
+    const dispose = captureController.subscribe((projectDir, captureEvent) => {
       if (event.sender.isDestroyed()) {
         dispose()
         return
       }
-      event.sender.send("capture-event", captureEvent)
+      event.sender.send("capture-event", projectDir, captureEvent)
     })
     event.sender.once("destroyed", dispose)
   })
-  ipcMain.handle("capture-list", (_event: IpcMainInvokeEvent, filter?: CaptureFilter) => captureController.list(filter))
-  ipcMain.handle("capture-get-body", (_event: IpcMainInvokeEvent, id: string, side: HttpSide) =>
-    captureController.getBody(id, side),
+  ipcMain.handle("capture-list", (_event: IpcMainInvokeEvent, projectDir: string, filter?: CaptureFilter) =>
+    captureController.list(projectDir, filter),
   )
-  ipcMain.handle("capture-clear", () => captureController.clear())
-  ipcMain.handle("capture-star", (_event: IpcMainInvokeEvent, id: string, on: boolean) =>
-    captureController.star(id, on),
+  ipcMain.handle("capture-get-body", async (_event: IpcMainInvokeEvent, id: string, side: HttpSide, projectDir: string) => {
+    const live = captureController.getBody(projectDir, id, side)
+    if (live) return live
+    const store = workspaceStores.captures(projectDir)
+    return store ? store.getBody(id, side) : null
+  })
+  ipcMain.handle("capture-clear", (_event: IpcMainInvokeEvent, projectDir: string) => captureController.clear(projectDir))
+  ipcMain.handle("capture-star", (_event: IpcMainInvokeEvent, projectDir: string, id: string, on: boolean) =>
+    captureController.star(projectDir, id, on),
   )
-  ipcMain.handle("capture-comment", (_event: IpcMainInvokeEvent, id: string, text?: string) =>
-    captureController.comment(id, text),
+  ipcMain.handle("capture-comment", (_event: IpcMainInvokeEvent, projectDir: string, id: string, text?: string) =>
+    captureController.comment(projectDir, id, text),
   )
-  ipcMain.handle("repeater-send", (_event: IpcMainInvokeEvent, req: RepeaterRequest) =>
-    captureController.sendRepeater(req),
+  ipcMain.handle("repeater-send", (_event: IpcMainInvokeEvent, projectDir: string, req: RepeaterRequest) =>
+    captureController.sendRepeater(projectDir, req),
   )
 
   ipcMain.handle("kill-sidecar", () => deps.killSidecar())

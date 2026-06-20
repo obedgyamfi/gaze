@@ -5,3 +5,4 @@
 
 export { SqliteCaptureStore } from "./store.js"
 export type { SqliteDriver } from "./driver.js"
+export { workspaceDbPath, workspaceDir, workspaceProfileDir, workspaceKey, normalizeDir } from "./paths.js"

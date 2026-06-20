@@ -140,10 +140,10 @@ export type BrowserStatus = {
 }
 
 export type BrowserPlatform = {
-  launch(opts?: { url?: string }): Promise<BrowserStatus>
-  close(): Promise<void>
-  status(): Promise<BrowserStatus>
-  subscribe(cb: (status: BrowserStatus) => void): () => void
+  launch(projectDir: string, opts?: { url?: string }): Promise<BrowserStatus>
+  close(projectDir: string): Promise<void>
+  status(projectDir: string): Promise<BrowserStatus>
+  subscribe(projectDir: string, cb: (status: BrowserStatus) => void): () => void
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({

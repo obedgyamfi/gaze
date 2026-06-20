@@ -119,13 +119,17 @@ export interface RepeaterRequest {
   body?: string
 }
 
-/** Desktop-only platform capability for driving capture + repeater. */
+/** Desktop-only platform capability for driving capture + repeater. All operations
+ *  are scoped to a workspace (project directory) — each has its own browser + db. */
 export interface CapturePlatform {
-  subscribe(cb: (event: CaptureStreamEvent) => void): () => void
-  list(filter?: CaptureFilter): Promise<CaptureRecord[]>
-  getBody(id: string, side: HttpSide): Promise<BodyData | null>
-  clear(): Promise<void>
-  star(id: string, on: boolean): Promise<void>
-  comment(id: string, text?: string): Promise<void>
-  repeaterSend(req: RepeaterRequest): Promise<CaptureRecord>
+  /** Stream live capture events, each tagged with the workspace it belongs to. */
+  subscribe(cb: (projectDir: string, event: CaptureStreamEvent) => void): () => void
+  list(projectDir: string, filter?: CaptureFilter): Promise<CaptureRecord[]>
+  /** Load a workspace's persisted captures (restores graph/proxy state on open). */
+  load(projectDir: string): Promise<{ records: CaptureRecord[]; navs: NavRecord[]; forms: FormRecord[] }>
+  getBody(id: string, side: HttpSide, projectDir: string): Promise<BodyData | null>
+  clear(projectDir: string): Promise<void>
+  star(projectDir: string, id: string, on: boolean): Promise<void>
+  comment(projectDir: string, id: string, text?: string): Promise<void>
+  repeaterSend(projectDir: string, req: RepeaterRequest): Promise<CaptureRecord>
 }
