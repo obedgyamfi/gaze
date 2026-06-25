@@ -109,7 +109,12 @@ export class CaptureClient {
     const sessionId: string | undefined = params.sessionId
     const type: string | undefined = params.targetInfo?.type
     if (!sessionId || !this.connection) return
-    if (type !== "page" && type !== "iframe") return
+    if (type !== "page" && type !== "iframe") {
+      // Not a target we capture (worker, "other"…), but still release it in case it
+      // auto-attached paused-on-start, so it can never hang the page it belongs to.
+      this.connection.send("Runtime.runIfWaitingForDebugger", {}, sessionId).catch(() => {})
+      return
+    }
 
     this.sessions.set(sessionId, {
       currentUrl: params.targetInfo?.url || undefined,
@@ -126,10 +131,22 @@ export class CaptureClient {
     await Promise.allSettled([
       c.send("Network.enable", { maxTotalBufferSize: 100_000_000, maxResourceBufferSize: 20_000_000 }, sessionId),
       c.send("Page.enable", {}, sessionId),
-      c.send("Runtime.enable", {}, sessionId),
+      // NOTE: Runtime.enable is deliberately NOT called. Anti-bot products (Cloudflare
+      // Turnstile/managed challenge, DataDome) detect an attached CDP inspector via the
+      // "Runtime.enable console leak" — enabling the domain makes console.* eagerly
+      // serialize objects, so a getter trap reveals the inspector. We subscribe to no
+      // Runtime events, and Runtime.evaluate (form scan) works without enabling the
+      // domain, so leaving it off removes the dominant CDP tell while capture is intact.
       // Recurse into this target's own children (OOP subframes, workers).
       c.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId),
     ])
+
+    // Release the target if Chromium paused it at start while auto-attaching. New
+    // out-of-process targets — popups and OOP iframes, e.g. an OAuth login window —
+    // can come up paused-on-start during the attach handshake and hang ("Debugger
+    // paused in another tab", blank page) until told to run. No-op if not waiting;
+    // does NOT require Runtime.enable.
+    c.send("Runtime.runIfWaitingForDebugger", {}, sessionId).catch(() => {})
 
     // Navigate to the requested target only now that Network is live, so the
     // initial page load is captured. First page target wins.

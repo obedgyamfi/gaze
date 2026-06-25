@@ -155,14 +155,37 @@ export function createSeedKnowledgeBase(): KnowledgeBase {
       const url = node.url ?? ""
       const hasQuery = url.includes("?")
       const mutating = node.method != null && ["POST", "PUT", "PATCH", "DELETE"].includes(node.method.toUpperCase())
-      const testable = node.kind === "Endpoint" || node.kind === "Form"
+      const testable = node.kind === "Endpoint" || node.kind === "Form" || node.kind === "EndpointTemplate"
+      const objectId = has("object-id") || ID_PARAM.test(url)
 
-      if (testable && ID_PARAM.test(url)) out.push({ vulnClass: "idor", why: "references an object id — substitute another owner's id under the same session", confidence: "high", methodologyRef: "wstg-idor" })
-      if (testable && hasQuery) {
+      // ── IDOR / access-control — graph-correlated signals first, then per-node ──
+      if (has("multi-principal") && objectId) {
+        out.push({ vulnClass: "idor", why: "the SPG saw this id-bearing resource served to ≥2 principals — replay one owner's id under another's session", confidence: "high", methodologyRef: "wstg-idor" })
+      } else if (testable && objectId) {
+        out.push({ vulnClass: "idor", why: "references an object id — substitute another owner's id under the same session", confidence: "high", methodologyRef: "wstg-idor" })
+      }
+      if (node.kind === "EndpointTemplate" && has("enumerable")) {
+        out.push({ vulnClass: "access-control", why: "enumerable id family (multiple instances observed) — walk the id range for objects you shouldn't reach", confidence: "medium", methodologyRef: "wstg-authz-forced-browse" })
+      }
+
+      // ── taint-derived signals (data-flow pass) ──
+      if (has("reflected")) {
+        out.push({ vulnClass: "xss", why: "a request value was echoed un-encoded in the response — likely reflected XSS", confidence: "high", methodologyRef: "wstg-xss" })
+      }
+      if (has("cross-boundary-leak")) {
+        out.push({ vulnClass: "info-leak", why: "a secret/token flowed to a different trust zone — possible credential leak / exfiltration", confidence: "high", methodologyRef: "wstg-info-leak" })
+      }
+
+      // ── injection / xss / ssrf — driven by typed parameters ──
+      if (testable && (hasQuery || has("param:opaque") || has("param:numeric-id"))) {
         out.push({ vulnClass: "injection", why: "user-controlled parameter may reach a backend query", confidence: "medium", methodologyRef: "wstg-injection-sql" })
         out.push({ vulnClass: "xss", why: "reflected parameter — test for un-encoded reflection", confidence: "medium", methodologyRef: "wstg-xss" })
       }
-      if (testable && SSRF_PARAM.test(url)) out.push({ vulnClass: "ssrf", why: "a parameter holds a URL — test server-side fetch / open redirect", confidence: "medium", methodologyRef: "wstg-ssrf" })
+      if (has("param:url") || SSRF_PARAM.test(url)) {
+        out.push({ vulnClass: "ssrf", why: "a parameter holds a URL — test server-side fetch / open redirect", confidence: "medium", methodologyRef: "wstg-ssrf" })
+      }
+
+      // ── auth / cors / csrf / info-leak ──
       if (has("auth")) {
         out.push({ vulnClass: "auth", why: "auth material observed on this node", confidence: "medium", methodologyRef: "wstg-auth" })
         out.push({ vulnClass: "access-control", why: "authenticated endpoint — test role/method boundary", confidence: "medium", methodologyRef: "wstg-authz-forced-browse" })
@@ -171,7 +194,10 @@ export function createSeedKnowledgeBase(): KnowledgeBase {
       if (node.kind === "Form" && mutating && !has("csrf-token")) out.push({ vulnClass: "csrf", why: "state-changing form with no anti-CSRF token observed", confidence: "medium", methodologyRef: "wstg-csrf" })
       if (has("html") && hasQuery) out.push({ vulnClass: "xss", why: "reflected parameter in an HTML response context", confidence: "medium", methodologyRef: "wstg-xss" })
       if (has("json") && (node.risk === "high" || node.risk === "critical")) out.push({ vulnClass: "info-leak", why: "high-risk JSON endpoint — inspect for verbose errors / secrets", confidence: "medium", methodologyRef: "wstg-info-leak" })
-      return out
+
+      // First (highest-confidence) candidate per vuln class wins.
+      const seen = new Set<VulnClass>()
+      return out.filter((c) => (seen.has(c.vulnClass) ? false : (seen.add(c.vulnClass), true)))
     },
 
     payloads(vulnClass) {

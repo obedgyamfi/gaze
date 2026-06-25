@@ -57,10 +57,6 @@ export function setBackgroundColor(color: string) {
   BrowserWindow.getAllWindows().forEach((win) => win.setBackgroundColor(color))
 }
 
-export function getBackgroundColor(): string | undefined {
-  return backgroundColor
-}
-
 function iconsDir() {
   return app.isPackaged ? join(process.resourcesPath, "icons") : join(root, "../../resources/icons")
 }

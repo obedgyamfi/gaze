@@ -96,9 +96,31 @@ export type NoteSummary = {
   tags: string[]
   createdAt: number
 }
+// Curated canvases (JSONCanvas). `doc` is the full @morgana/web-core CanvasRecord;
+// kept structural here so the preload doesn't depend on web-core.
+export type CanvasSummary = {
+  id: string
+  title: string
+  purpose: string
+  nodeCount: number
+  edgeCount: number
+  updatedAt: number
+}
+export type CanvasDoc = {
+  id: string
+  title: string
+  purpose: string
+  canvas: { nodes: unknown[]; edges: unknown[] }
+  createdAt: number
+  updatedAt: number
+}
 export type MorganaAPI = {
   findings: (projectDir: string) => Promise<FindingSummary[]>
   notes: (projectDir: string) => Promise<NoteSummary[]>
+  canvasList: (projectDir: string) => Promise<CanvasSummary[]>
+  canvasRead: (projectDir: string, id: string) => Promise<CanvasDoc | null>
+  canvasSave: (projectDir: string, doc: CanvasDoc) => Promise<void>
+  canvasDelete: (projectDir: string, id: string) => Promise<void>
 }
 
 export type LinuxDisplayBackend = "wayland" | "auto"
@@ -115,7 +137,6 @@ export type FatalRendererError = {
 
 export type ElectronAPI = {
   killSidecar: () => Promise<void>
-  installCli: () => Promise<string>
   awaitInitialization: () => Promise<ServerReadyData>
   wslServers: WslServersAPI
   updater: UpdaterAPI

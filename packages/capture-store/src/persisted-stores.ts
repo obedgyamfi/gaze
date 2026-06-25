@@ -3,7 +3,7 @@
 // JSON blobs keyed by id (small, structured) in the same engagement db as the
 // captures, so findings/evidence survive restarts alongside proxy/repeater data.
 
-import type { Finding, Note, OracleEvidence, Stores } from "@morgana/web-core"
+import { summarizeCanvas, type CanvasRecord, type Finding, type Note, type OracleEvidence, type Stores } from "@morgana/web-core"
 import type { SqliteDriver } from "./driver.js"
 
 export function createSqliteStores(db: SqliteDriver): Stores {
@@ -11,6 +11,7 @@ export function createSqliteStores(db: SqliteDriver): Stores {
   db.exec(`CREATE TABLE IF NOT EXISTS evidence (id TEXT PRIMARY KEY, json TEXT NOT NULL)`)
   db.exec(`CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, json TEXT NOT NULL)`)
   db.exec(`CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, nodeId TEXT, json TEXT NOT NULL)`)
+  db.exec(`CREATE TABLE IF NOT EXISTS canvases (id TEXT PRIMARY KEY, json TEXT NOT NULL, updatedAt INTEGER NOT NULL)`)
 
   return {
     evidence: {
@@ -35,6 +36,15 @@ export function createSqliteStores(db: SqliteDriver): Stores {
         db
           .all<{ json: string }>(nodeId ? `SELECT json FROM notes WHERE nodeId = ?` : `SELECT json FROM notes`, nodeId ? [nodeId] : [])
           .map((r) => JSON.parse(r.json) as Note),
+    },
+    canvases: {
+      put: (r) => db.run(`INSERT OR REPLACE INTO canvases (id, json, updatedAt) VALUES (?, ?, ?)`, [r.id, JSON.stringify(r), r.updatedAt]),
+      get: (id) => {
+        const row = db.get<{ json: string }>(`SELECT json FROM canvases WHERE id = ?`, [id])
+        return row ? (JSON.parse(row.json) as CanvasRecord) : undefined
+      },
+      list: () => db.all<{ json: string }>(`SELECT json FROM canvases ORDER BY updatedAt DESC`).map((r) => summarizeCanvas(JSON.parse(r.json) as CanvasRecord)),
+      remove: (id) => db.run(`DELETE FROM canvases WHERE id = ?`, [id]),
     },
   }
 }

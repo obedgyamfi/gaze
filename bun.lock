@@ -34,6 +34,7 @@
       "version": "1.17.3",
       "dependencies": {
         "@kobalte/core": "catalog:",
+        "@morgana/web-core": "workspace:*",
         "@opencode-ai/core": "workspace:*",
         "@opencode-ai/sdk": "workspace:*",
         "@opencode-ai/ui": "workspace:*",

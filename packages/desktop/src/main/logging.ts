@@ -7,7 +7,6 @@ import { dirname, join } from "node:path"
 import { homedir } from "node:os"
 
 const MAX_LOG_AGE_DAYS = 7
-const TAIL_LINES = 1000
 const EXPORT_WINDOW = 24 * 60 * 60 * 1000
 const MAX_EXPORT_FILE_SIZE = 50 * 1024 * 1024
 const NET_LOG_SIZE = 20 * 1024 * 1024
@@ -87,16 +86,6 @@ export function write(
   scoped[level](message)
 }
 
-export function tail(): string {
-  try {
-    const path = log.transports.file.getFile().path
-    const contents = readFileSync(path, "utf8")
-    const lines = contents.split("\n")
-    return lines.slice(Math.max(0, lines.length - TAIL_LINES)).join("\n")
-  } catch {
-    return ""
-  }
-}
 
 function initRunDirectory() {
   root = join(app.getPath("userData"), "logs")

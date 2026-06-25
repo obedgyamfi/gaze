@@ -9,6 +9,10 @@ import { buildTree, CATEGORY_META } from "./graph-model"
 import { GraphCanvas, type GraphCanvasApi } from "./graph-canvas"
 import { NodeInspector } from "./node-inspector"
 import { collapsedSet, graphState, setGraphState } from "./graph-state"
+import { useSecurityGraph } from "./use-security-graph"
+import { lensById } from "./lenses/registry"
+import { applyRiskHeat } from "./lenses/overlays"
+import { LayerSwitcher } from "./layer-switcher"
 
 // The Graph tool — a live tidy tree of the captured attack surface: domains →
 // path directories → page / endpoint / resource leaves. Colour encodes category;
@@ -43,16 +47,29 @@ export default function GraphTool() {
   })
   onCleanup(() => timer && clearTimeout(timer))
 
+  // The single SPG the agent also reasons over — every lens projects from this.
+  const spg = useSecurityGraph(snapshot)
+
   const tree = createMemo(() => {
     const s = snapshot()
-    return buildTree({
+    const out = lensById(graphState.activeLens).project({
+      spg: spg(),
       captures: s.captures,
       navs: s.navs,
       forms: s.forms,
       filters: { ...graphState.filters },
       collapsed: collapsedSet(),
     })
+    return graphState.overlays["risk-heat"] ? applyRiskHeat(out, spg()) : out
   })
+
+  // Lens-aware empty state — a terrain can be legitimately empty (e.g. Identity &
+  // Access on a capture with no authenticated traffic); say why, don't just blank.
+  const emptyMessage = () => {
+    if (!capture.available) return "Capture is only available in the desktop app."
+    if (spg().nodes.size <= 1) return "Launch the browser and navigate — the graph builds as traffic is captured."
+    return "Nothing to show on this layer yet — switch layers, or capture more traffic."
+  }
 
   const deselect = () => setGraphState("selectedId", undefined)
 
@@ -117,7 +134,9 @@ export default function GraphTool() {
             <IconButton
               icon="chevron-grabber-vertical"
               variant="ghost"
-              onClick={() => setGraphState("collapsed", {})}
+              onClick={() => {
+                for (const id of Object.keys(graphState.collapsed)) setGraphState("collapsed", id, false)
+              }}
               aria-label="Expand all"
             />
           </Tooltip>
@@ -163,15 +182,12 @@ export default function GraphTool() {
             "background-size": "18px 18px",
           }}
         >
+          <LayerSwitcher />
           <Show
             when={tree().nodes.length > 1}
             fallback={
               <div class="absolute inset-0 flex items-center justify-center px-6 text-center">
-                <span class="text-12-regular text-text-weak">
-                  {capture.available
-                    ? "Launch the browser and navigate — the attack-surface tree builds as traffic is captured."
-                    : "Capture is only available in the desktop app."}
-                </span>
+                <span class="max-w-md text-12-regular text-text-weak">{emptyMessage()}</span>
               </div>
             }
           >

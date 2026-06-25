@@ -6,7 +6,8 @@
   "private": true,
   "description": "Host-agnostic core for the Morgana web-security toolset: base + enriched attack-surface graph builders, the read GraphStore, the capture-source seam, and host-neutral tool specs. Consumed by @morgana/plugin-web and @morgana/mcp-web.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./graph": "./src/graph/browser.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

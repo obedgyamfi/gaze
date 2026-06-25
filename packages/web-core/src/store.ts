@@ -5,6 +5,7 @@
 
 import { createHash } from "node:crypto"
 import { buildEnrichedGraph } from "./graph/enriched.js"
+import { enrichTaint, type TaintObservation } from "./graph/taint.js"
 import type { CaptureRecord, CaptureSource, HeaderPair } from "./capture-source.js"
 import {
   type CaptureSummaryRow,
@@ -127,8 +128,40 @@ export function createEnrichedGraphStore(src: CaptureSource): GraphStore {
     if (cache && cache.version === version) return cache.graph
     const g = buildEnrichedGraph({ captures, navs, forms })
     g.version = version
+    // Taint pass (async, body-correlated). Best-effort — never blocks the build.
+    try {
+      await enrichTaint(g, await taintObservations(captures))
+    } catch {
+      /* taint enrichment is additive; a body-read failure must not break reads */
+    }
     cache = { version, graph: g }
     return g
+  }
+
+  // Assemble taint observations: fetch a bounded set of texty request/response
+  // bodies. Bounded by recency so a huge engagement doesn't read every body.
+  const TAINT_BODY_LIMIT = 300
+  const TEXTY = /(json|text|xml|html|javascript|x-www-form-urlencoded|csv|graphql)/i
+  async function bodyText(id: string, side: "request" | "response"): Promise<string | undefined> {
+    try {
+      const b = await src.getBody(id, side)
+      if (!b) return undefined
+      return b.text ?? Buffer.from(b.base64, "base64").toString("utf8")
+    } catch {
+      return undefined
+    }
+  }
+  async function taintObservations(captures: CaptureRecord[]): Promise<TaintObservation[]> {
+    const recent = captures.slice(-TAINT_BODY_LIMIT)
+    const out: TaintObservation[] = []
+    for (const c of recent) {
+      const rct = c.responseBody?.contentType ?? ""
+      const qct = c.requestBody?.contentType ?? ""
+      const responseText = c.responseBody?.present && (!rct || TEXTY.test(rct)) ? await bodyText(c.id, "response") : undefined
+      const requestText = c.requestBody?.present && (!qct || TEXTY.test(qct)) ? await bodyText(c.id, "request") : undefined
+      out.push({ capture: c, responseText, requestText })
+    }
+    return out
   }
 
   function degreeMap(g: Graph): Map<string, { in: number; out: number }> {

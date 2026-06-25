@@ -16,7 +16,7 @@ import { BrowserController } from "./browser"
 import { CaptureController } from "./capture/controller"
 import { WorkspaceStores } from "./capture/workspace-stores"
 import type { CaptureFilter, HttpSide, RepeaterRequest } from "./capture/types"
-import type { FindingSummary, NoteSummary } from "../preload/types"
+import type { CanvasDoc, CanvasSummary, FindingSummary, NoteSummary } from "../preload/types"
 
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
@@ -84,6 +84,21 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("morgana-notes", (_event: IpcMainInvokeEvent, projectDir: string): NoteSummary[] =>
     (workspaceStores.findings(projectDir)?.notes.list() ?? []).map((n) => ({ id: n.id, nodeId: n.nodeId, text: n.text, tags: n.tags, createdAt: n.createdAt })),
   )
+
+  // Curated canvases — read/written by both the agent (mcp-web) and a human here,
+  // on the SAME per-workspace store the findings come from.
+  ipcMain.handle("morgana-canvas-list", (_event: IpcMainInvokeEvent, projectDir: string): CanvasSummary[] =>
+    workspaceStores.findings(projectDir)?.canvases.list() ?? [],
+  )
+  ipcMain.handle("morgana-canvas-read", (_event: IpcMainInvokeEvent, projectDir: string, id: string): CanvasDoc | null =>
+    (workspaceStores.findings(projectDir)?.canvases.get(id) as CanvasDoc | undefined) ?? null,
+  )
+  ipcMain.handle("morgana-canvas-save", (_event: IpcMainInvokeEvent, projectDir: string, doc: CanvasDoc): void => {
+    workspaceStores.findings(projectDir)?.canvases.put(doc as never)
+  })
+  ipcMain.handle("morgana-canvas-delete", (_event: IpcMainInvokeEvent, projectDir: string, id: string): void => {
+    workspaceStores.findings(projectDir)?.canvases.remove(id)
+  })
 
   ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, projectDir: string, opts?: { url?: string }) =>
     browserController.launch(projectDir, opts),

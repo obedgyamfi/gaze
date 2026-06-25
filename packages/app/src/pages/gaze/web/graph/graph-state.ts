@@ -1,5 +1,6 @@
 import { createStore } from "solid-js/store"
 import { defaultFilters } from "./graph-model"
+import { DEFAULT_LENS_ID } from "./lenses/registry"
 
 // Persistent, view-independent graph state. It lives at module scope (not inside
 // GraphTool) so selection, collapsed nodes, filters, search and the camera all
@@ -13,6 +14,9 @@ export const [graphState, setGraphState] = createStore({
   selectedId: undefined as string | undefined,
   query: "",
   showFilters: false,
+  // Active lens (terrain) + composable overlays — the layer switcher drives these.
+  activeLens: DEFAULT_LENS_ID as string,
+  overlays: { "risk-heat": false } as Record<string, boolean>,
   // Category -> enabled. Seeded with the default high-signal set.
   filters: defaultFilters() as Record<string, boolean>,
   // Node id -> collapsed. A record (not a Set) so the store tracks it granularly.

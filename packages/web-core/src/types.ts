@@ -2,7 +2,20 @@
 // The labeled-property-graph types (the enriched moat model) plus the compact
 // read-surface shapes the tools return. Ported from gaze graph.types.ts.
 
-export type NodeKind = "Domain" | "Page" | "Endpoint" | "Resource" | "Form" | "Script" | "ExternalService"
+export type NodeKind =
+  | "Domain"
+  | "Page"
+  | "Endpoint"
+  | "Resource"
+  | "Form"
+  | "Script"
+  | "ExternalService"
+  // ── SPG security entities (the moat) ──
+  | "Principal" // a distinct session/role, identified by an auth FINGERPRINT (never the credential)
+  | "Parameter" // a named input (query/path/header/body) with an inferred value-class
+  | "EndpointTemplate" // /orders/{id} — the family that collapses id-bearing instances
+  | "Value" // a sensitive/identifying value (secret, token, email…) stored as a FINGERPRINT
+  | "TrustZone" // first-party / third-party / internal — the privilege levels boundaries divide
 
 export type EdgeKind =
   | "NAVIGATES_TO"
@@ -14,6 +27,13 @@ export type EdgeKind =
   | "HOSTS"
   | "AUTHENTICATES_VIA"
   | "LINKED_FROM"
+  // ── SPG security edges ──
+  | "ACCESSED_BY" // Principal → resource: the access matrix (IDOR / access-control)
+  | "HAS_PARAM" // Endpoint/Form → Parameter
+  | "INSTANCE_OF" // Endpoint instance → EndpointTemplate
+  | "FLOWS_TO" // Value → node it was sent to (taint/data-flow); secret leak, SSRF
+  | "REFLECTS" // Value → node whose response echoed it un-encoded (XSS/injection seed)
+  | "IN_ZONE" // Domain → TrustZone membership
 
 export type RiskLevel = "critical" | "high" | "medium" | "low" | "none"
 export type StatusClass = "1xx" | "2xx" | "3xx" | "4xx" | "5xx"

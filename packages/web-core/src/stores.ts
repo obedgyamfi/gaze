@@ -5,6 +5,7 @@
 
 import { createHash } from "node:crypto"
 import type { Finding, Note, OracleEvidence, OracleVerdict } from "./types.js"
+import { type CanvasRecord, type CanvasSummary, summarizeCanvas } from "./canvas.js"
 
 /** `ev-<sha1(baselineCaptureId:testCaptureId:verdict:signal)>` — immutable checksum id. */
 export function stampEvidenceId(baselineCaptureId: string, testCaptureId: string, verdict: OracleVerdict, signal: string): string {
@@ -25,17 +26,26 @@ export interface NoteStore {
   put(n: Note): void
   list(nodeId?: string): Note[]
 }
+/** Thin persistence for curated canvases — create/patch logic lives in canvas.ts. */
+export interface CanvasStore {
+  put(rec: CanvasRecord): void
+  get(id: string): CanvasRecord | undefined
+  list(): CanvasSummary[]
+  remove(id: string): void
+}
 
 export interface Stores {
   evidence: EvidenceStore
   findings: FindingStore
   notes: NoteStore
+  canvases: CanvasStore
 }
 
 export function createInMemoryStores(): Stores {
   const evidence = new Map<string, OracleEvidence>()
   const findings = new Map<string, Finding>()
   const notes: Note[] = []
+  const canvases = new Map<string, CanvasRecord>()
   return {
     evidence: {
       put: (e) => void evidence.set(e.id, e),
@@ -50,6 +60,12 @@ export function createInMemoryStores(): Stores {
     notes: {
       put: (n) => void notes.push(n),
       list: (nodeId) => (nodeId ? notes.filter((n) => n.nodeId === nodeId) : [...notes]),
+    },
+    canvases: {
+      put: (r) => void canvases.set(r.id, r),
+      get: (id) => canvases.get(id),
+      list: () => [...canvases.values()].map(summarizeCanvas).sort((a, b) => b.updatedAt - a.updatedAt),
+      remove: (id) => void canvases.delete(id),
     },
   }
 }

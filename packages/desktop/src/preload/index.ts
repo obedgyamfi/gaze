@@ -12,7 +12,6 @@ const updaterHandler = (_: unknown, state: UpdaterState) => {
 
 const api: ElectronAPI = {
   killSidecar: () => ipcRenderer.invoke("kill-sidecar"),
-  installCli: () => ipcRenderer.invoke("install-cli"),
   awaitInitialization: () => ipcRenderer.invoke("await-initialization"),
   wslServers: {
     getState: () => ipcRenderer.invoke("wsl-servers-get-state"),
@@ -86,6 +85,10 @@ const api: ElectronAPI = {
   morgana: {
     findings: (projectDir) => ipcRenderer.invoke("morgana-findings", projectDir),
     notes: (projectDir) => ipcRenderer.invoke("morgana-notes", projectDir),
+    canvasList: (projectDir) => ipcRenderer.invoke("morgana-canvas-list", projectDir),
+    canvasRead: (projectDir, id) => ipcRenderer.invoke("morgana-canvas-read", projectDir, id),
+    canvasSave: (projectDir, doc) => ipcRenderer.invoke("morgana-canvas-save", projectDir, doc),
+    canvasDelete: (projectDir, id) => ipcRenderer.invoke("morgana-canvas-delete", projectDir, id),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),

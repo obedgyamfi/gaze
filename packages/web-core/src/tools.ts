@@ -7,7 +7,7 @@
 import { z } from "zod"
 import type { CaptureSource } from "./capture-source.js"
 import type { GraphStore } from "./store.js"
-import type { EvidenceStore, FindingStore, NoteStore } from "./stores.js"
+import type { CanvasStore, EvidenceStore, FindingStore, NoteStore } from "./stores.js"
 import type { KnowledgeBase } from "./kb.js"
 
 /** A host-fired, scoped HTTP request (assisted mode). The host attaches the live
@@ -43,6 +43,7 @@ export interface HandlerCtx {
   evidence: EvidenceStore
   findings: FindingStore
   notes: NoteStore
+  canvases: CanvasStore
   kb: KnowledgeBase
   /** Host-fired scoped HTTP; absent ⇒ web_http_send / web_replay refuse. */
   fire?: (req: FireRequest) => Promise<FireResult>
@@ -76,8 +77,8 @@ export function out(title: string, data: unknown): ToolOutput {
   return { title, text: `**${title}**\n\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``, data: data as Record<string, unknown> }
 }
 
-export const NODE_KINDS = ["Domain", "Page", "Endpoint", "Resource", "Form", "Script", "ExternalService"] as const
-export const EDGE_KINDS = ["NAVIGATES_TO", "CALLS", "LOADS", "SUBMITS_TO", "REDIRECTS_TO", "CROSS_ORIGIN_CALL", "HOSTS", "AUTHENTICATES_VIA", "LINKED_FROM"] as const
+export const NODE_KINDS = ["Domain", "Page", "Endpoint", "Resource", "Form", "Script", "ExternalService", "Principal", "Parameter", "EndpointTemplate", "Value", "TrustZone"] as const
+export const EDGE_KINDS = ["NAVIGATES_TO", "CALLS", "LOADS", "SUBMITS_TO", "REDIRECTS_TO", "CROSS_ORIGIN_CALL", "HOSTS", "AUTHENTICATES_VIA", "LINKED_FROM", "ACCESSED_BY", "HAS_PARAM", "INSTANCE_OF", "FLOWS_TO", "REFLECTS", "IN_ZONE"] as const
 export const RISK = ["critical", "high", "medium", "low", "none"] as const
 
 export const shared = {

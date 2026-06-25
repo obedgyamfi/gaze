@@ -149,6 +149,10 @@ export class BrowserController {
       `--user-data-dir=${profileDir}`,
       "--no-first-run",
       "--no-default-browser-check",
+      // NOTE: do NOT add --disable-blink-features=AutomationControlled. navigator.webdriver
+      // is already false here (we never pass --enable-automation), so the flag changes
+      // nothing — but Chrome shows an "unsupported command-line flag" infobar for it, which
+      // is both a UX wart and its own signal. Leaving it off is strictly better.
       "--new-window",
       "about:blank",
     ]

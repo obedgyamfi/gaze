@@ -41,6 +41,7 @@ export function createServer(opts?: { scopeHosts?: string[]; captureSource?: Cap
     evidence: stores.evidence,
     findings: stores.findings,
     notes: stores.notes,
+    canvases: stores.canvases,
     kb: createSeedKnowledgeBase(),
     fire: opts?.fire,
   }
