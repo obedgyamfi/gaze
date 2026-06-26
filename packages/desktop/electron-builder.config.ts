@@ -59,6 +59,11 @@ const getBase = (appId: string): Configuration => ({
       to: "native/",
       filter: ["index.js", "index.d.ts", "build/Release/mac_window.node", "swift-build/**"],
     },
+    // The compiled, self-contained Morgana MCP server (built in prebuild). Lands at
+    // <install>/resources/bin/morgana-mcp-web[.exe] = process.resourcesPath/bin/…, which
+    // server.ts registers via OPENCODE_CONFIG_CONTENT so the agent gets its tools with
+    // zero manual setup.
+    { from: "build/bin/", to: "bin/" },
   ],
   mac: {
     category: "public.app-category.developer-tools",

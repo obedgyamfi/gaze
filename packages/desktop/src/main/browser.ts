@@ -106,6 +106,10 @@ export class BrowserController {
   }
 
   subscribe(projectDir: string, listener: Listener): () => void {
+    if (!projectDir) {
+      listener({ running: false })
+      return () => {}
+    }
     const i = this.instance(projectDir)
     i.listeners.add(listener)
     listener(i.status)
@@ -113,6 +117,7 @@ export class BrowserController {
   }
 
   getStatus(projectDir: string): BrowserStatus {
+    if (!projectDir) return { running: false }
     return this.instances.get(workspaceKey(projectDir))?.status ?? { running: false }
   }
 
@@ -129,6 +134,7 @@ export class BrowserController {
   }
 
   async launch(projectDir: string, opts?: { url?: string }): Promise<BrowserStatus> {
+    if (!projectDir) throw new Error("Open a project first — the browser is scoped to a workspace.")
     const i = this.instance(projectDir)
     if (i.child && i.status.running) return i.status
 
@@ -175,6 +181,7 @@ export class BrowserController {
   }
 
   async close(projectDir: string): Promise<void> {
+    if (!projectDir) return
     const i = this.instances.get(workspaceKey(projectDir))
     if (!i?.child) return
     const child = i.child

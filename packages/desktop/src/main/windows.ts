@@ -194,9 +194,20 @@ export function registerRendererProtocol() {
       return new Response("Not found", { status: 404 })
     }
 
+    // SPA fallback: a request that resolves to no real file and isn't a static asset
+    // (no file extension) is a client-side route — serve index.html so deep workspace
+    // links (app://host/<base64dir>/web/...) work on reload/deep-link, not just on
+    // in-app pushState navigation. Missing *assets* still 404 (don't mask real errors).
+    const looksLikeAsset = /\.[a-z0-9]+$/i.test(url.pathname)
+    const serveIndex = async () => {
+      const indexHtml = resolve(rendererRoot, "index.html")
+      return addDocumentPolicy(await net.fetch(pathToFileURL(indexHtml).toString()), indexHtml)
+    }
+
     try {
       const response = await net.fetch(pathToFileURL(file).toString())
       if (response.status >= 400) {
+        if (!looksLikeAsset) return serveIndex()
         writeLog(
           "protocol",
           "fetch failed",
@@ -211,6 +222,7 @@ export function registerRendererProtocol() {
       }
       return addDocumentPolicy(response, file)
     } catch (error) {
+      if (!looksLikeAsset) return serveIndex()
       writeLog("protocol", "fetch error", { url: request.url, file, error }, "error")
       return new Response("Not found", { status: 404 })
     }

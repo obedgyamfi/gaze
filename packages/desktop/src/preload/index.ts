@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from "electron"
 import type { BrowserStatus, CaptureStreamEvent, ElectronAPI, WslServersEvent } from "./types"
 import type { UpdaterState } from "@opencode-ai/app/updater"
 
+// The workspace project dir keys every per-workspace IPC. With no project open it can
+// be "" / undefined — guard so we never invoke a main handler with a bad value (which
+// crashes on path.resolve) or hand a non-cloneable reactive value to structuredClone.
+const validDir = (d: unknown): d is string => typeof d === "string" && d.length > 0
+
 const updaterCallbacks = new Set<(state: UpdaterState) => void>()
 let updaterState: UpdaterState | undefined
 let updaterSubscription: Promise<void> | undefined
@@ -57,10 +62,15 @@ const api: ElectronAPI = {
     install: () => ipcRenderer.invoke("updater-install"),
   },
   browser: {
-    launch: (projectDir, opts) => ipcRenderer.invoke("browser-launch", projectDir, opts),
-    close: (projectDir) => ipcRenderer.invoke("browser-close", projectDir),
-    status: (projectDir) => ipcRenderer.invoke("browser-status", projectDir),
+    launch: (projectDir, opts) =>
+      validDir(projectDir)
+        ? ipcRenderer.invoke("browser-launch", projectDir, opts)
+        : Promise.reject(new Error("Open a project first — the browser is scoped to a workspace.")),
+    close: (projectDir) => (validDir(projectDir) ? ipcRenderer.invoke("browser-close", projectDir) : Promise.resolve()),
+    status: (projectDir) =>
+      validDir(projectDir) ? ipcRenderer.invoke("browser-status", projectDir) : Promise.resolve({ running: false } as BrowserStatus),
     subscribe: (projectDir, cb) => {
+      if (!validDir(projectDir)) return () => {}
       const handler = (_: unknown, status: BrowserStatus) => cb(status)
       ipcRenderer.on("browser-status", handler)
       void ipcRenderer.invoke("browser-subscribe", projectDir)

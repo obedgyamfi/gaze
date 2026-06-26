@@ -1,4 +1,4 @@
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { app, utilityProcess } from "electron"
 import type { Details } from "electron"
@@ -214,7 +214,23 @@ function createSidecarEnv(): Record<string, string> {
   delete env.DEBUG
   if (process.platform === "linux") delete env.LD_PRELOAD
   if (!app.isPackaged) env.OPENCODE_DISABLE_CHANNEL_DB = "1"
+  // Zero-config: auto-register the Morgana web-security MCP server so the agent has
+  // its tools without the user hand-editing opencode.json. opencode MERGES
+  // OPENCODE_CONFIG_CONTENT on top of the user's config (non-destructive). Paths are
+  // resolved at runtime, so they're correct on every machine; the server inherits
+  // XDG_STATE_HOME (set to userData) so it reads the same capture DB the desktop writes.
+  env.OPENCODE_CONFIG_CONTENT = morganaMcpConfigContent()
   return env
+}
+
+/** The morgana-web MCP registration as inline opencode config. Packaged → the bundled
+ *  self-contained binary; dev → the repo source run via bun (cwd = packages/desktop). */
+function morganaMcpConfigContent(): string {
+  const exe = process.platform === "win32" ? "morgana-mcp-web.exe" : "morgana-mcp-web"
+  const command = app.isPackaged
+    ? [join(process.resourcesPath, "bin", exe)]
+    : ["bun", resolve(process.cwd(), "..", "mcp-web", "src", "index.ts")]
+  return JSON.stringify({ mcp: { "morgana-web": { type: "local", command, enabled: true } } })
 }
 
 function delay(ms: number) {

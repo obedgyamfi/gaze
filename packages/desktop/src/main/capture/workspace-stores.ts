@@ -23,6 +23,7 @@ export class WorkspaceStores {
 
   /** Capture read/write store for a workspace (records, bodies, navs, forms). */
   captures(projectDir: string): Caps | undefined {
+    if (!projectDir) return undefined // no workspace open — handlers fall back to empty
     const key = this.path(projectDir)
     let c = this.capCache.get(key)
     if (!c) {
@@ -39,6 +40,7 @@ export class WorkspaceStores {
 
   /** Evidence/findings/notes store for a workspace. */
   findings(projectDir: string): Stores | undefined {
+    if (!projectDir) return undefined // no workspace open — handlers fall back to empty
     const key = this.path(projectDir)
     let s = this.storeCache.get(key)
     if (!s) {
