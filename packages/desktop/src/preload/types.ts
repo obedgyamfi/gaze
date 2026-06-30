@@ -77,6 +77,7 @@ export type CaptureAPI = {
 }
 
 // ── Morgana findings/notes (read from the persisted engagement db) ────────────
+export type FindingSnapshot = { status: number; ms: number; length: number }
 export type FindingSummary = {
   id: string
   status: string
@@ -88,6 +89,11 @@ export type FindingSummary = {
   verdict: string
   signal: string
   createdAt: number
+  nodeId?: string
+  baseline?: FindingSnapshot
+  test?: FindingSnapshot
+  baselineCaptureId?: string
+  testCaptureId?: string
 }
 export type NoteSummary = {
   id: string

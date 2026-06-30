@@ -8,6 +8,8 @@ export { buildEnrichedGraph, resolveCaptureNode, nodeId, edgeId, type ResolvedNo
 export { enrichTaint, type TaintObservation } from "./taint.js"
 export { buildBaseGraph, categoryOf } from "./base.js"
 export { hashHex } from "./hash.js"
+// KB is pure (no node deps) — the renderer queries methodology/refs per vuln class.
+export { createSeedKnowledgeBase, type KnowledgeBase, type KbProcedure } from "../kb.js"
 // Canvas model is pure (no node deps) — the renderer edits canvases locally with it.
 export {
   createCanvasRecord,

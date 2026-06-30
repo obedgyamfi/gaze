@@ -79,6 +79,12 @@ export function registerIpcHandlers(deps: Deps) {
       verdict: f.evidence.verdict,
       signal: f.evidence.signal,
       createdAt: f.createdAt,
+      // Evidence diff + provenance for the detail-panel PoC (the dashboard reads these).
+      nodeId: f.nodeId,
+      baseline: { status: f.evidence.baseline.status, ms: f.evidence.baseline.ms, length: f.evidence.baseline.length },
+      test: { status: f.evidence.test.status, ms: f.evidence.test.ms, length: f.evidence.test.length },
+      baselineCaptureId: f.evidence.baselineCaptureId,
+      testCaptureId: f.evidence.testCaptureId,
     })),
   )
   ipcMain.handle("morgana-notes", (_event: IpcMainInvokeEvent, projectDir: string): NoteSummary[] =>
