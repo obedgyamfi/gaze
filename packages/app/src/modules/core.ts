@@ -4,7 +4,7 @@ import type { ToolView } from "./types"
 // represented by Projects (engagement ≈ opencode project).
 export const CORE_VIEWS: ToolView[] = [
   { id: "projects", label: "Projects", icon: "folder" },
-  { id: "findings", label: "Findings", icon: "warning" },
+  { id: "findings", label: "Findings", icon: "warning", component: () => import("@/pages/gaze/findings") },
   { id: "reports", label: "Reports", icon: "checklist" },
   { id: "notes", label: "Notes", icon: "pencil-line", component: () => import("@/pages/gaze/notes") },
 ]
