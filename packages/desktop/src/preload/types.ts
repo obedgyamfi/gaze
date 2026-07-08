@@ -127,6 +127,7 @@ export type MorganaAPI = {
   canvasRead: (projectDir: string, id: string) => Promise<CanvasDoc | null>
   canvasSave: (projectDir: string, doc: CanvasDoc) => Promise<void>
   canvasDelete: (projectDir: string, id: string) => Promise<void>
+  saveReport: (opts: { format: "html" | "pdf" | "doc"; html: string; defaultName: string }) => Promise<string | null>
 }
 
 export type LinuxDisplayBackend = "wayland" | "auto"

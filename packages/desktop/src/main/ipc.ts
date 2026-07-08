@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process"
-import { stat } from "node:fs/promises"
-import { basename } from "node:path"
+import { stat, writeFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from "electron"
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 import type { DesktopMenuAction } from "@opencode-ai/app/desktop-menu"
@@ -24,6 +25,51 @@ const pickerFilters = (ext?: string[]) => {
 }
 
 const pickedFiles = createPickedFileAuthorizations()
+
+// Render report HTML to PDF via an offscreen window so it matches the HTML exactly,
+// with a running GAZE / page-number footer.
+async function renderReportPdf(html: string): Promise<Buffer> {
+  const tmp = join(tmpdir(), `gaze-report-${Date.now()}.html`)
+  await writeFile(tmp, html, "utf8")
+  const win = new BrowserWindow({
+    show: false,
+    width: 1024,
+    height: 1400,
+    webPreferences: { offscreen: true, sandbox: true, javascript: false },
+  })
+  try {
+    await win.loadFile(tmp)
+    await new Promise((resolve) => setTimeout(resolve, 200)) // let layout/paint settle
+    return await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "A4",
+      margins: { top: 0.6, bottom: 0.7, left: 0.55, right: 0.55 },
+      displayHeaderFooter: true,
+      headerTemplate: "<span></span>",
+      footerTemplate:
+        '<div style="width:100%;font-size:8px;color:#94a3b8;padding:0 12mm;display:flex;justify-content:space-between;">' +
+        '<span>GAZE — Confidential</span><span>Page <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>',
+    })
+  } finally {
+    win.destroy()
+    await rm(tmp, { force: true }).catch(() => {})
+  }
+}
+
+// Wrap the report HTML so Microsoft Word opens it as a paginated document.
+function wordDocument(html: string): string {
+  const msoHead =
+    "<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->" +
+    "<style>@page WordSection1 { size:21cm 29.7cm; margin:2cm; } div.WordSection1 { page:WordSection1; }</style>"
+  return html
+    .replace(
+      /<html([^>]*)>/i,
+      '<html$1 xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">',
+    )
+    .replace(/<\/head>/i, `${msoHead}</head>`)
+    .replace(/<body([^>]*)>/i, '<body$1><div class="WordSection1">')
+    .replace(/<\/body>/i, "</div></body>")
+}
 
 type Deps = {
   killSidecar: () => Promise<void> | void
@@ -105,6 +151,38 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("morgana-canvas-delete", (_event: IpcMainInvokeEvent, projectDir: string, id: string): void => {
     workspaceStores.findings(projectDir)?.canvases.remove(id)
   })
+
+  // Export the report HTML (built in the renderer) to a user-chosen file. PDF is
+  // rendered from the same HTML via an offscreen window so it matches exactly;
+  // Word opens the HTML with Office namespaces; HTML is written verbatim.
+  ipcMain.handle(
+    "morgana-report-export",
+    async (
+      _event: IpcMainInvokeEvent,
+      opts: { format: "html" | "pdf" | "doc"; html: string; defaultName: string },
+    ): Promise<string | null> => {
+      const filters = {
+        html: [{ name: "HTML Document", extensions: ["html"] }],
+        pdf: [{ name: "PDF Document", extensions: ["pdf"] }],
+        doc: [{ name: "Word Document", extensions: ["doc"] }],
+      }[opts.format]
+      const result = await dialog.showSaveDialog({
+        title: "Save GAZE report",
+        defaultPath: opts.defaultName,
+        filters,
+      })
+      if (result.canceled || !result.filePath) return null
+
+      if (opts.format === "pdf") {
+        await writeFile(result.filePath, await renderReportPdf(opts.html))
+      } else if (opts.format === "doc") {
+        await writeFile(result.filePath, wordDocument(opts.html), "utf8")
+      } else {
+        await writeFile(result.filePath, opts.html, "utf8")
+      }
+      return result.filePath
+    },
+  )
 
   ipcMain.handle("browser-launch", (_event: IpcMainInvokeEvent, projectDir: string, opts?: { url?: string }) =>
     browserController.launch(projectDir, opts),

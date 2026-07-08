@@ -99,6 +99,7 @@ const api: ElectronAPI = {
     canvasRead: (projectDir, id) => ipcRenderer.invoke("morgana-canvas-read", projectDir, id),
     canvasSave: (projectDir, doc) => ipcRenderer.invoke("morgana-canvas-save", projectDir, doc),
     canvasDelete: (projectDir, id) => ipcRenderer.invoke("morgana-canvas-delete", projectDir, id),
+    saveReport: (opts) => ipcRenderer.invoke("morgana-report-export", opts),
   },
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),
