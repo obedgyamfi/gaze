@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onMount, Show } from "solid-js"
+import { createMemo, createSignal, For, onMount, Show, type JSX } from "solid-js"
 import { useLocation } from "@solidjs/router"
 import { Icon } from "@opencode-ai/ui/icon"
 import { decode64 } from "@/utils/base64"
@@ -13,19 +13,19 @@ import {
   type Severity,
 } from "./findings/scoring"
 import { FindingDetail } from "./findings/finding-detail"
+import { RiskGauge, SeverityBar } from "./viz"
 
-// Engagement findings dashboard: replay-proven vulnerabilities the agent filed, with
-// a weighted risk score, severity breakdown, filters, and a master-list + detail-panel
-// vuln outline. Scoped to the current workspace (project dir).
+// Findings vulnerability dashboard: a workspace-scoped, replay-proven vulnerability
+// list with a weighted risk gauge, severity distribution, filters, and a master-list
+// + detail-panel outline. Refined to the OpenCode line/curve aesthetic.
 
-function RiskBadge(props: { score: number }) {
+function MicroLabel(props: { children: JSX.Element; color?: string }) {
   return (
     <span
-      class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-12-medium text-white"
-      style={{ background: scoreColor(props.score) }}
-      title="Weighted engagement risk score (0–100)"
+      class="uppercase"
+      style={{ "font-size": "10.5px", "letter-spacing": "0.04em", "font-weight": 500, color: props.color ?? "var(--text-weak)" }}
     >
-      Risk {props.score}
+      {props.children}
     </span>
   )
 }
@@ -36,23 +36,31 @@ function FindingRow(props: { f: MorganaFinding; selected: boolean; onClick: () =
     <button
       type="button"
       onClick={props.onClick}
-      class="flex w-full flex-col gap-1 border-b border-border-weak-base px-4 py-3 text-left transition-colors hover:bg-surface-base"
-      classList={{ "bg-surface-base-active": props.selected }}
-      style={{ "border-left": `3px solid ${meta().color}` }}
+      class="group flex w-full items-center gap-3 border-b border-border-weak-base px-4 py-3 text-left transition-colors hover:bg-surface-base"
+      classList={{ "bg-surface-base": props.selected }}
+      style={{ "border-left": `3px solid ${props.selected ? meta().color : "transparent"}` }}
     >
-      <div class="flex items-center gap-2">
-        <span class="shrink-0 text-11-medium uppercase" style={{ color: meta().color }}>
-          {meta().label}
-        </span>
-        <span class="shrink-0 text-11-regular text-text-weak">{meta().cvss.toFixed(1)}</span>
-        <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.f.title}</span>
+      <span class="mt-0.5 size-2 shrink-0 rounded-full" style={{ background: meta().color }} />
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
+        <div class="flex items-center gap-2">
+          <MicroLabel color={meta().color}>{meta().label}</MicroLabel>
+          <span class="shrink-0 text-12-regular text-text-weak">{meta().cvss.toFixed(1)}</span>
+          <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.f.title}</span>
+        </div>
+        <div class="flex items-center gap-2 text-12-regular text-text-weak">
+          <span class="shrink-0">{props.f.vulnClass}</span>
+          <span class="shrink-0 opacity-50">·</span>
+          <span class="shrink-0 uppercase" style={{ "font-size": "10.5px", "letter-spacing": "0.03em" }}>
+            {props.f.status}
+          </span>
+          <span class="min-w-0 flex-1 truncate opacity-80">· {props.f.signal}</span>
+        </div>
       </div>
-      <div class="flex items-center gap-2 text-11-regular text-text-weak">
-        <span>{props.f.vulnClass}</span>
-        <span>·</span>
-        <span class="uppercase">{props.f.status}</span>
-        <span class="min-w-0 flex-1 truncate">· {props.f.signal}</span>
-      </div>
+      <Icon
+        name="chevron-right"
+        size="small"
+        class="shrink-0 text-icon-weak-base opacity-0 transition-opacity group-hover:opacity-100"
+      />
     </button>
   )
 }
@@ -117,40 +125,63 @@ export default function Findings() {
 
   return (
     <div class="flex h-full w-full flex-col bg-background-base">
-      {/* header */}
-      <div class="flex shrink-0 flex-col gap-3 border-b border-border-weak-base px-5 py-3">
-        <div class="flex items-center gap-3">
-          <Icon name="warning" size="normal" class="text-icon-base" />
-          <span class="text-16-medium text-text-strong">Findings</span>
-          <span class="text-12-regular text-text-weak">{summary().total} total</span>
-          <RiskBadge score={summary().score} />
-          <button class="ml-auto text-12-regular text-text-weak hover:text-text-base" onClick={() => void refresh()}>
-            Refresh
-          </button>
+      {/* hero header */}
+      <div class="flex shrink-0 flex-col gap-4 border-b border-border-weak-base px-5 py-4">
+        <div class="flex items-center gap-5">
+          <RiskGauge value={summary().score} color={scoreColor(summary().score)} size={104} caption="RISK" />
+
+          <div class="flex min-w-0 flex-1 flex-col gap-2.5">
+            <div class="flex items-center gap-2">
+              <Icon name="shield" size="small" class="text-icon-base" />
+              <span class="text-16-medium text-text-strong">Findings</span>
+              <span class="text-12-regular text-text-weak">
+                {summary().total} total
+                <Show when={summary().dominant}> · {severityMeta(summary().dominant!).label.toLowerCase()}-dominant</Show>
+              </span>
+              <button
+                class="ml-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-12-regular text-text-weak transition-colors hover:bg-surface-base hover:text-text-base"
+                onClick={() => void refresh()}
+              >
+                <Icon name="reset" size="small" /> Refresh
+              </button>
+            </div>
+
+            <SeverityBar counts={summary().counts} height={10} />
+
+            {/* severity legend = clickable filters */}
+            <div class="flex flex-wrap items-center gap-1.5">
+              <For each={SEVERITY_META}>
+                {(m) => {
+                  const active = () => sevFilter().has(m.key)
+                  const n = () => summary().counts[m.key]
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => toggleSev(m.key)}
+                      class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-12-medium transition-all"
+                      classList={{
+                        "border-transparent text-white": active(),
+                        "border-border-weak-base text-text-base hover:bg-surface-base": !active(),
+                        "opacity-45": !active() && n() === 0,
+                      }}
+                      style={active() ? { background: m.color } : undefined}
+                    >
+                      <span class="size-1.5 rounded-full" style={{ background: active() ? "#fff" : m.color }} />
+                      {m.label}
+                      <span class="tabular-nums opacity-70">{n()}</span>
+                    </button>
+                  )
+                }}
+              </For>
+            </div>
+          </div>
         </div>
-        <div class="flex flex-wrap items-center gap-1.5">
-          <For each={SEVERITY_META}>
-            {(m) => {
-              const active = () => sevFilter().has(m.key)
-              return (
-                <button
-                  type="button"
-                  onClick={() => toggleSev(m.key)}
-                  class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-12-medium transition-colors"
-                  classList={{
-                    "border-transparent text-white": active(),
-                    "border-border-weak-base text-text-base hover:bg-surface-base": !active(),
-                  }}
-                  style={active() ? { background: m.color } : undefined}
-                >
-                  <span class="size-1.5 rounded-full" style={{ background: active() ? "#fff" : m.color }} />
-                  {m.label} <span class="opacity-70">{summary().counts[m.key]}</span>
-                </button>
-              )
-            }}
-          </For>
+
+        {/* filter row */}
+        <div class="flex flex-wrap items-center gap-2">
+          <Icon name="sliders" size="small" class="text-icon-weak-base" />
           <select
-            class="ml-2 h-7 rounded-md border border-border-weak-base bg-surface-base px-2 text-12-regular text-text-base"
+            class="h-7 rounded-md border border-border-weak-base bg-surface-base px-2 text-12-regular text-text-base"
             value={classFilter()}
             onChange={(e) => setClassFilter(e.currentTarget.value)}
           >
@@ -174,6 +205,11 @@ export default function Findings() {
             <option value="severity">Sort: severity</option>
             <option value="recency">Sort: recent</option>
           </select>
+          <Show when={visible().length !== findings().length}>
+            <span class="text-12-regular text-text-weak">
+              {visible().length} of {findings().length}
+            </span>
+          </Show>
         </div>
       </div>
 
@@ -187,14 +223,17 @@ export default function Findings() {
         }
       >
         <div class="flex min-h-0 flex-1">
-          <div class="w-[420px] shrink-0 overflow-y-auto border-r border-border-weak-base">
+          <div class="w-[440px] shrink-0 overflow-y-auto border-r border-border-weak-base">
             <Show
               when={visible().length > 0}
               fallback={
-                <div class="px-4 py-6 text-12-regular text-text-weak">
-                  {findings().length === 0
-                    ? "No findings yet — the agent files them after the oracle confirms a vulnerability."
-                    : "No findings match the current filters."}
+                <div class="flex flex-col items-center gap-2 px-6 py-16 text-center">
+                  <Icon name="shield" size="large" class="text-icon-weak-base" />
+                  <span class="text-12-regular text-text-weak">
+                    {findings().length === 0
+                      ? "No findings yet — the agent files them after the oracle confirms a vulnerability."
+                      : "No findings match the current filters."}
+                  </span>
                 </div>
               }
             >
@@ -212,13 +251,13 @@ export default function Findings() {
                   <span class="text-13-regular text-text-weak">Select a finding to read its outline.</span>
                   <Show when={notes().length > 0}>
                     <div class="flex flex-col gap-2">
-                      <span class="text-11-medium uppercase tracking-wide text-text-weak">Notes ({notes().length})</span>
+                      <MicroLabel>Notes ({String(notes().length)})</MicroLabel>
                       <For each={notes()}>
                         {(n) => (
                           <div class="rounded-lg border border-border-weak-base bg-background-stronger p-3">
                             <span class="text-12-regular text-text-base">{n.text}</span>
                             <Show when={n.tags.length > 0}>
-                              <div class="mt-1 font-mono text-11-regular text-text-weak">{n.tags.join(", ")}</div>
+                              <div class="mt-1 font-mono text-12-regular text-text-weak">{n.tags.join(", ")}</div>
                             </Show>
                           </div>
                         )}
