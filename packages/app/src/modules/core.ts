@@ -5,6 +5,6 @@ import type { ToolView } from "./types"
 export const CORE_VIEWS: ToolView[] = [
   { id: "projects", label: "Projects", icon: "folder", component: () => import("@/pages/gaze/projects") },
   { id: "findings", label: "Findings", icon: "warning", component: () => import("@/pages/gaze/findings") },
-  { id: "reports", label: "Reports", icon: "checklist" },
+  { id: "reports", label: "Reports", icon: "checklist", component: () => import("@/pages/gaze/reports") },
   { id: "notes", label: "Notes", icon: "pencil-line", component: () => import("@/pages/gaze/notes") },
 ]
