@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { riskSummary, severityMeta, severityRank, vulnRef } from "./scoring"
+import { cumulativeSeries, riskSummary, severityMeta, severityRank, vulnRef } from "./scoring"
 
 describe("riskSummary", () => {
   test("empty → zeroed, no dominant", () => {
@@ -34,6 +34,20 @@ describe("severityMeta / severityRank", () => {
   })
   test("rank orders critical < info", () => {
     expect(severityRank("critical")).toBeLessThan(severityRank("info"))
+  })
+})
+
+describe("cumulativeSeries", () => {
+  test("empty → empty series", () => {
+    expect(cumulativeSeries([])).toEqual([])
+  })
+  test("length = buckets, monotonic non-decreasing, ends at total", () => {
+    const now = Date.now()
+    const fs = [{ createdAt: now - 5000 }, { createdAt: now - 3000 }, { createdAt: now - 1000 }]
+    const s = cumulativeSeries(fs, 8)
+    expect(s.length).toBe(8)
+    for (let i = 1; i < s.length; i++) expect(s[i]).toBeGreaterThanOrEqual(s[i - 1])
+    expect(s[s.length - 1]).toBe(3)
   })
 })
 

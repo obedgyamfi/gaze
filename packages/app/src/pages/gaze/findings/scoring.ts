@@ -84,6 +84,23 @@ export function riskSummary(findings: { severity: string }[]): RiskSummary {
   return { score, total: findings.length, counts, dominant }
 }
 
+/**
+ * Cumulative finding counts across `buckets` equal time slices spanning the
+ * findings' lifetime (first filed → now). A monotonic rising series for a trend
+ * curve; empty when there are no findings.
+ */
+export function cumulativeSeries(findings: { createdAt: number }[], buckets = 12): number[] {
+  if (findings.length === 0) return []
+  const times = findings.map((f) => f.createdAt)
+  const start = Math.min(...times)
+  const end = Math.max(Date.now(), ...times)
+  const span = end - start || 1
+  return Array.from({ length: buckets }, (_, i) => {
+    const edge = start + (span * (i + 1)) / buckets
+    return times.filter((t) => t <= edge).length
+  })
+}
+
 // ── methodology + references (reused from the seed KB) ────────────────────────
 const kb = createSeedKnowledgeBase()
 
