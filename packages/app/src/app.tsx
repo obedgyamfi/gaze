@@ -149,6 +149,11 @@ declare global {
         canvasRead: (projectDir: string, id: string) => Promise<import("@morgana/web-core/graph").CanvasRecord | null>
         canvasSave: (projectDir: string, doc: import("@morgana/web-core/graph").CanvasRecord) => Promise<void>
         canvasDelete: (projectDir: string, id: string) => Promise<void>
+        saveReport: (opts: {
+          format: "html" | "pdf" | "doc"
+          html: string
+          defaultName: string
+        }) => Promise<string | null>
       }
     }
   }
