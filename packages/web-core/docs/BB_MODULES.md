@@ -88,3 +88,44 @@ creds encrypted at rest, redacted from captures/reports; every active run requir
 observation dedup (hashset + bloom at scale); depth/page/time budgets; CPU work in the worker pool;
 streamed + batched + incremental graph deltas; keep-alive/H2 pools; size-capped bodies; one
 `AbortSignal` threaded scope → collector → scheduler → socket.
+
+## Decision: the ingest-merge model
+
+**Problem.** The enriched graph is (re)built *from captures* via `buildEnrichedGraph` — both the
+agent's server-side `GraphStore` and the renderer's `use-security-graph` do this, and rebuild whenever
+traffic changes. Collector `Observation`s folded straight into that graph would be **wiped on the next
+rebuild**. We need discovered surface to be durable and to survive rebuilds, for both consumers.
+
+**Options considered.**
+
+- **A — Persist observations; fold at build time.** A per-workspace `ObservationStore` (like
+  captures/findings). One shared `buildWorkspaceGraph = buildEnrichedGraph(captures)` then
+  `foldObservation` for each stored observation. Rebuilds re-apply them. *Pro:* one source of truth,
+  rebuild-safe, survives restart, reuses idempotent fold, works for both consumers. *Con:* a new
+  persisted store + wiring into both build paths; requires node-id reconciliation.
+- **B — In-memory read-time overlay.** Keep folded obs in a separate overlay merged at read.
+  *Con:* not durable, dual-graph merge logic everywhere.
+- **C — `store.augment()` sticky API.** Store re-applies augmented nodes on rebuild.
+  *Con:* not persisted; renderer path still separate; bespoke.
+
+**Decision: Option A.** It matches how every other artifact (captures/findings/canvases) already
+works — durable, deterministic, single source of truth — and reuses the idempotent `foldObservation`.
+
+**Critical correctness detail — node-id reconciliation.** A discovered `GET /api/x` MUST collapse
+onto the *captured* one. So `foldObservation` must generate endpoint/param ids with the SAME
+`nodeId`/`edgeId` helpers `buildEnrichedGraph` uses (both exported from `graph/enriched.ts`), not the
+ad-hoc `ep:METHOD url` scheme it uses today. This is a required change to `ingest.ts` before wiring.
+
+**Execution steps (next session).**
+1. `ingest.ts`: switch endpoint/param/edge ids to enriched `nodeId`/`edgeId` (dedupe discovered ≡ captured).
+2. New persisted `ObservationStore` (per workspace; SQLite-backed like the others) + `foldObservations(graph, obs[])` helper.
+3. Server (`mcp-web`): construct the `CollectRuntime` — `createScopeGuard({hosts: scope})`,
+   `createScheduler()`, `createNodeHttp({scope,scheduler})`, `ingest = (o) => observations.put(o)`;
+   `GraphStore` rebuild folds stored observations after `buildEnrichedGraph`.
+4. Renderer: add `morgana.observations(dir)` IPC; `use-security-graph` folds them post-build
+   (`foldObservation` is pure/browser-safe, so this works client-side).
+5. Live run (`bun run dev`): drive `web_crawl` / `web_analyze_js` against an authorized target and
+   confirm discovered nodes appear in the graph and survive a capture-triggered rebuild.
+
+Discovered-only nodes (never captured) carry no taint/risk enrichment until exercised — expected;
+if later captured they merge by id and gain enrichment.
