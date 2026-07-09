@@ -44,3 +44,5 @@ export { shannonEntropy, detectSecrets, extractEndpoints } from "./analyze-js.js
 export { extractLinks, extractForms, extractScripts, type FormObs } from "./analyze-html.js"
 export { jsAnalyzerCollector, type JsAnalyzerConfig } from "./collectors/js-analyzer.js"
 export { crawlerCollector, type CrawlerConfig } from "./collectors/crawler.js"
+export { contentDiscoveryCollector, isHit, type ContentDiscoveryConfig } from "./collectors/content-discovery.js"
+export { paramMinerCollector, type ParamMinerConfig } from "./collectors/param-miner.js"
