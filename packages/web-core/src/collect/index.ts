@@ -50,3 +50,6 @@ export { subdomainTakeoverCollector, type TakeoverConfig } from "./collectors/su
 export { matchTakeover, TAKEOVER_FINGERPRINTS, type TakeoverMatch, type TakeoverFingerprint } from "./takeover-fingerprints.js"
 export { parseOpenApi, parseGraphqlIntrospection, detectSchemaKind, type ParsedEndpoint } from "./api-schema.js"
 export { apiSchemaCollector, type ApiSchemaConfig } from "./collectors/api-schema.js"
+
+// ── oracles ──
+export { raceOracle, type RaceCandidate, type RaceResult } from "./oracles/race.js"

@@ -19,6 +19,9 @@ export interface TaskOpts {
 
 export interface Scheduler {
   submit<T>(task: (signal: AbortSignal) => Promise<T>, opts: TaskOpts): Promise<T>
+  /** Fire tasks as simultaneously as the runtime allows, bypassing the rate limiter
+   *  (the point of a race is concurrency). Returns settled results. */
+  burst<T>(tasks: ((signal: AbortSignal) => Promise<T>)[], opts?: { signal?: AbortSignal }): Promise<PromiseSettledResult<T>[]>
   budget(host: string): HostBudget
 }
 
@@ -117,6 +120,17 @@ export function createScheduler(cfg: SchedulerConfig = {}): Scheduler {
 
   return {
     budget,
+    burst<T>(
+      tasks: ((signal: AbortSignal) => Promise<T>)[],
+      opts?: { signal?: AbortSignal },
+    ): Promise<PromiseSettledResult<T>[]> {
+      const ac = new AbortController()
+      if (opts?.signal) {
+        if (opts.signal.aborted) ac.abort()
+        else opts.signal.addEventListener("abort", () => ac.abort(), { once: true })
+      }
+      return Promise.allSettled(tasks.map((t) => t(ac.signal)))
+    },
     submit<T>(task: (signal: AbortSignal) => Promise<T>, opts: TaskOpts): Promise<T> {
       return new Promise<T>((resolve, reject) => {
         queues[opts.priority ?? 1].push({
