@@ -41,4 +41,6 @@ export { type Registry, createRegistry, type CollectorRegistry, type OracleRegis
 
 // ── analysis + collectors ──
 export { shannonEntropy, detectSecrets, extractEndpoints } from "./analyze-js.js"
+export { extractLinks, extractForms, extractScripts, type FormObs } from "./analyze-html.js"
 export { jsAnalyzerCollector, type JsAnalyzerConfig } from "./collectors/js-analyzer.js"
+export { crawlerCollector, type CrawlerConfig } from "./collectors/crawler.js"
