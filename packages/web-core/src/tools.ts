@@ -7,7 +7,7 @@
 import { z } from "zod"
 import type { CaptureSource } from "./capture-source.js"
 import type { GraphStore } from "./store.js"
-import type { CanvasStore, EvidenceStore, FindingStore, NoteStore } from "./stores.js"
+import type { CanvasStore, EvidenceStore, FindingStore, NoteStore, ObservationStore, ScopeStore } from "./stores.js"
 import type { KnowledgeBase } from "./kb.js"
 import type { ScopeGuard } from "./collect/scope.js"
 import type { Scheduler } from "./collect/scheduler.js"
@@ -56,6 +56,10 @@ export interface HandlerCtx {
   findings: FindingStore
   notes: NoteStore
   canvases: CanvasStore
+  /** Durable collector observations (discovered surface), folded back post-rebuild. */
+  observations: ObservationStore
+  /** The engagement's in-scope host allow-list (ROE). Read live by the collect runtime. */
+  scope: ScopeStore
   kb: KnowledgeBase
   /** Host-fired scoped HTTP; absent ⇒ web_http_send / web_replay refuse. */
   fire?: (req: FireRequest) => Promise<FireResult>

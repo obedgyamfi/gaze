@@ -145,6 +145,9 @@ declare global {
       morgana?: {
         findings: (projectDir: string) => Promise<import("@/pages/gaze/findings/scoring").MorganaFinding[]>
         notes: (projectDir: string) => Promise<import("@/pages/gaze/findings/scoring").MorganaNote[]>
+        observations: (projectDir: string) => Promise<import("@morgana/web-core/graph").Observation[]>
+        scopeGet: (projectDir: string) => Promise<string[]>
+        scopeSet: (projectDir: string, hosts: string[]) => Promise<void>
         canvasList: (projectDir: string) => Promise<import("@/pages/gaze/web/canvas").CanvasSummary[]>
         canvasRead: (projectDir: string, id: string) => Promise<import("@morgana/web-core/graph").CanvasRecord | null>
         canvasSave: (projectDir: string, doc: import("@morgana/web-core/graph").CanvasRecord) => Promise<void>

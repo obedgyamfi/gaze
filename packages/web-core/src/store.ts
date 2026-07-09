@@ -6,6 +6,8 @@
 import { createHash } from "node:crypto"
 import { buildEnrichedGraph } from "./graph/enriched.js"
 import { enrichTaint, type TaintObservation } from "./graph/taint.js"
+import { foldObservations } from "./collect/ingest.js"
+import type { Observation } from "./collect/types.js"
 import type { CaptureRecord, CaptureSource, HeaderPair } from "./capture-source.js"
 import {
   type CaptureSummaryRow,
@@ -117,24 +119,43 @@ function adjacency(edges: Iterable<GraphEdge>, direction: "in" | "out" | "both")
   return adj
 }
 
-export function createEnrichedGraphStore(src: CaptureSource): GraphStore {
-  let cache: { version: number; graph: Graph } | null = null
+/** Read seam over the persisted ObservationStore — just enough for the graph build to
+ *  re-fold discovered surface. `ObservationStore` satisfies this structurally. */
+export interface ObservationSource {
+  list(): Observation[] | Promise<Observation[]>
+}
+
+export function createEnrichedGraphStore(src: CaptureSource, observations?: ObservationSource): GraphStore {
+  let cache: { key: string; graph: Graph } | null = null
 
   async function graph(): Promise<Graph> {
     const captures = await src.list()
     const navs = src.navs ? await src.navs() : []
     const forms = src.forms ? await src.forms() : []
     const version = src.version ? await src.version() : captures.length
-    if (cache && cache.version === version) return cache.graph
+    const obs = observations ? await observations.list() : []
+    // Cache key spans BOTH inputs: a newly-persisted observation (obs.length grows)
+    // invalidates the cache so discovered surface is re-folded even when captures are
+    // unchanged. The store is append-only + content-addressed, so length is a faithful,
+    // monotonic version for the observation set.
+    const key = `${version}#${obs.length}`
+    if (cache && cache.key === key) return cache.graph
     const g = buildEnrichedGraph({ captures, navs, forms })
-    g.version = version
+    // graphVersion reflects both inputs (both monotonic non-decreasing) so a client sees
+    // a bump when EITHER captures or discovered observations change.
+    g.version = version + obs.length
     // Taint pass (async, body-correlated). Best-effort — never blocks the build.
     try {
       await enrichTaint(g, await taintObservations(captures))
     } catch {
       /* taint enrichment is additive; a body-read failure must not break reads */
     }
-    cache = { version, graph: g }
+    // Fold persisted discovery AFTER the captured build + taint: ingest keys endpoints/
+    // params with the same nodeId/edgeId helpers, so discovered nodes merge onto captured
+    // ones (no parallel node) and survive this rebuild. Discovered-only nodes carry no
+    // taint/risk enrichment until later captured — expected.
+    if (obs.length) foldObservations(g, obs)
+    cache = { key, graph: g }
     return g
   }
 

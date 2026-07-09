@@ -8,6 +8,10 @@ export { buildEnrichedGraph, resolveCaptureNode, nodeId, edgeId, type ResolvedNo
 export { enrichTaint, type TaintObservation } from "./taint.js"
 export { buildBaseGraph, categoryOf } from "./base.js"
 export { hashHex } from "./hash.js"
+// Discovery ingest is pure (only enriched/hash deps) — the renderer folds persisted
+// collector Observations onto the SAME graph the agent sees (Option A, client-side).
+export { foldObservation, foldObservations } from "../collect/ingest.js"
+export type { Observation, ParamObs, SecretRefObs, SecretClass, Provenance } from "../collect/types.js"
 // KB is pure (no node deps) — the renderer queries methodology/refs per vuln class.
 export { createSeedKnowledgeBase, type KnowledgeBase, type KbProcedure } from "../kb.js"
 // Canvas model is pure (no node deps) — the renderer edits canvases locally with it.

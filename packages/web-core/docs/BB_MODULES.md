@@ -112,20 +112,31 @@ rebuild**. We need discovered surface to be durable and to survive rebuilds, for
 works — durable, deterministic, single source of truth — and reuses the idempotent `foldObservation`.
 
 **Critical correctness detail — node-id reconciliation.** A discovered `GET /api/x` MUST collapse
-onto the *captured* one. So `foldObservation` must generate endpoint/param ids with the SAME
+onto the *captured* one. So `foldObservation` generates endpoint/param ids with the SAME
 `nodeId`/`edgeId` helpers `buildEnrichedGraph` uses (both exported from `graph/enriched.ts`), not the
-ad-hoc `ep:METHOD url` scheme it uses today. This is a required change to `ingest.ts` before wiring.
+ad-hoc `ep:METHOD url` scheme. **Done** — `ingest.ts` now mints `nodeId("Endpoint", url)` (method-
+agnostic, matching enriched), keys params `owner?name` (query) / `owner#name` (body), and routes all
+edges through `edgeId()`; the discovery-only kinds (Host/Service/Certificate/JsAsset/SecretRef) keep
+their own id schemes since they have no captured equivalent. Covered by a collapse test in `ingest.test.ts`.
 
 **Execution steps (next session).**
-1. `ingest.ts`: switch endpoint/param/edge ids to enriched `nodeId`/`edgeId` (dedupe discovered ≡ captured).
-2. New persisted `ObservationStore` (per workspace; SQLite-backed like the others) + `foldObservations(graph, obs[])` helper.
-3. Server (`mcp-web`): construct the `CollectRuntime` — `createScopeGuard({hosts: scope})`,
-   `createScheduler()`, `createNodeHttp({scope,scheduler})`, `ingest = (o) => observations.put(o)`;
-   `GraphStore` rebuild folds stored observations after `buildEnrichedGraph`.
-4. Renderer: add `morgana.observations(dir)` IPC; `use-security-graph` folds them post-build
-   (`foldObservation` is pure/browser-safe, so this works client-side).
-5. Live run (`bun run dev`): drive `web_crawl` / `web_analyze_js` against an authorized target and
-   confirm discovered nodes appear in the graph and survive a capture-triggered rebuild.
+1. ~~`ingest.ts`: switch endpoint/param/edge ids to enriched `nodeId`/`edgeId` (dedupe discovered ≡ captured).~~ **Done.**
+2. ~~New persisted `ObservationStore` (per workspace; SQLite-backed like the others) + `foldObservations(graph, obs[])` helper.~~ **Done** — `ObservationStore` is now part of the `Stores` bundle (in-memory in web-core `stores.ts`, SQLite `observations` table in `capture-store/persisted-stores.ts`), keyed by a content-addressed `observationId` (identity minus the volatile `via.at`) so `put` is idempotent. `foldObservations(graph, obs[], now?)` re-applies a stored set, each at its own discovery time.
+3. ~~Server (`mcp-web`): construct the `CollectRuntime` — `createScopeGuard({hosts: scope})`, `createScheduler()`, `createNodeHttp({scope,scheduler})`, `ingest = (o) => observations.put(o)`; `GraphStore` rebuild folds stored observations after `buildEnrichedGraph`.~~ **Done** — `createEnrichedGraphStore(src, observations?)` folds the stored set after `buildEnrichedGraph` + taint; its cache key spans `${captureVersion}#${obs.length}` so a new observation invalidates the cache and re-folds even with no new capture, and `graphVersion` = `captureVersion + obs.length` so clients see a bump on either. `mcp-web` builds the `CollectRuntime` (deny-by-default scope, one scheduler, DNS-pinned `createNodeHttp`) with `ingest = (o) => stores.observations.put(o)` — persist-only; the folded view appears on the next read.
+4. ~~Renderer: add `morgana.observations(dir)` IPC; `use-security-graph` folds them post-build (`foldObservation` is pure/browser-safe, so this works client-side).~~ **Done** — `foldObservation`/`foldObservations` + the `Observation` types are now exported from the browser barrel (`@morgana/web-core/graph`). New `morgana-observations` IPC handler reads `stores.observations.list()`; exposed as `window.api.morgana.observations(dir)`. `useSecurityGraph` folds the set after `buildEnrichedGraph`, and the graph page polls it (~4s) and merges it with the throttled capture snapshot so the SPG refolds when either changes — discovered endpoints collapse onto captured nodes by id.
+5. Live run: drive `web_crawl` / `web_analyze_js` against an authorized target and confirm discovered
+   nodes appear in the graph and survive a capture-triggered rebuild.
+   - **Scope is now per-workspace + durable.** A `ScopeStore` (part of `Stores`; SQLite `scope` table)
+     holds the engagement's in-scope host globs, set in the desktop **Web → Overview → Scope** panel
+     (`morgana-scope-get/set` IPC). mcp-web builds a **dynamic** `ScopeGuard` (`createDynamicScopeGuard`)
+     that re-reads the store on every request, so a scope edit takes effect on the next tool call with
+     no MCP restart; `MORGANA_SCOPE_HOSTS` remains a CLI/dev fallback. Empty scope ⇒ the collect/recon
+     tools refuse with a hint pointing at the panel (deny-by-default egress).
+   - **Packaging note:** the desktop spawns the *compiled* `morgana-mcp-web` binary (`app.isPackaged`),
+     so changes to `mcp-web`/`capture-store` require a binary rebuild (`bun run prebuild` / any package
+     build) to take effect; dev (`bun run dev`) runs the source but needs a full desktop relaunch to
+     respawn the MCP. mcp-web startup failures now log to stderr + `<db-dir>/mcp-web-crash.log` (a bare
+     "Connection closed" otherwise); driver `busy_timeout` guards the shared-WAL startup race.
 
 Discovered-only nodes (never captured) carry no taint/risk enrichment until exercised — expected;
 if later captured they merge by id and gain enrichment.

@@ -67,9 +67,9 @@ export function extractEndpoints(text: string, baseUrl?: string, cap = 500): str
     if (!/^https?:\/\//.test(url)) return
     if (url.length > 200) return
     if (ASSET_EXT.test(url)) return
-    found.add(url.split("#")[0])
+    found.add(url.split("#")[0] ?? url)
   }
   for (const m of text.matchAll(URL_RE)) add(m[0].replace(/[),.'"`]+$/, ""))
-  for (const m of text.matchAll(PATH_RE)) add(m[1])
+  for (const m of text.matchAll(PATH_RE)) if (m[1]) add(m[1])
   return [...found]
 }

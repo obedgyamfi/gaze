@@ -44,4 +44,21 @@ describe("COLLECT_TOOLS", () => {
     const res = await tool("web_crawl").handler({ seeds: ["https://app.a.test/"] }, bare)
     expect(res.data.error).toBeDefined()
   })
+
+  test("refuses with a scope hint when the runtime is present but scope is empty", async () => {
+    const net: ScopedHttp = { fetch: async (req) => ({ status: 200, headers: {}, body: "", bytes: 0, ms: 1, finalUrl: req.url }) }
+    const ctx = {
+      ...createInMemoryStores(),
+      collect: {
+        scope: createScopeGuard({ hosts: [], denyPrivate: true }), // empty scope
+        net,
+        scheduler: createScheduler({ defaultRps: 1000 }),
+        ingest: () => {},
+      },
+      signal: new AbortController().signal,
+    } as unknown as HandlerCtx
+    const res = await tool("web_crawl").handler({ seeds: ["https://app.a.test/"] }, ctx)
+    expect(res.data.error).toBeDefined()
+    expect(String(res.data.error)).toMatch(/scope/i)
+  })
 })

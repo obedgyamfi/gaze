@@ -5,7 +5,7 @@
 
 export type HttpSide = "request" | "response"
 
-export type CaptureSource = "browser" | "repeater"
+export type CaptureSource = "browser" | "repeater" | "proxy"
 
 export interface HeaderPair {
   name: string

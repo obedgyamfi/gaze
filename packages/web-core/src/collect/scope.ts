@@ -73,6 +73,24 @@ function hostMatches(host: string, glob: string): boolean {
   return false
 }
 
+/** A ScopeGuard whose host allow-list is read LIVE on every check, so a scope edited at
+ *  runtime (e.g. from the desktop's Web → Scope panel, persisted to the workspace db)
+ *  takes effect on the next request without restarting the process that holds the guard.
+ *  Delegates to createScopeGuard per call — host lists are tiny, so rebuilding is cheap. */
+export function createDynamicScopeGuard(getHosts: () => string[], denyPrivate = true): ScopeGuard {
+  return {
+    get rules(): ScopeRules {
+      return { hosts: getHosts(), denyPrivate }
+    },
+    allows(t) {
+      return createScopeGuard({ hosts: getHosts(), denyPrivate }).allows(t)
+    },
+    assert(t) {
+      createScopeGuard({ hosts: getHosts(), denyPrivate }).assert(t)
+    },
+  }
+}
+
 export function createScopeGuard(rules: ScopeRules): ScopeGuard {
   const hosts = rules.hosts.map((h) => h.toLowerCase())
   const explicitHost = (h: string) => hosts.includes(h) || (rules.cidrs ?? []).some((c) => inCidr(h, c))

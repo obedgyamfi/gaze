@@ -88,6 +88,7 @@ export function createScheduler(cfg: SchedulerConfig = {}): Scheduler {
         outer: for (const q of queues) {
           for (let i = 0; i < q.length; i++) {
             const it = q[i]
+            if (!it) continue
             const b = budget(it.opts.host)
             if ((hostRunning.get(it.opts.host) ?? 0) >= b.concurrency) continue
             const cur = buckets.get(it.opts.host) ?? newBucket(b.rps, now())
@@ -133,7 +134,8 @@ export function createScheduler(cfg: SchedulerConfig = {}): Scheduler {
     },
     submit<T>(task: (signal: AbortSignal) => Promise<T>, opts: TaskOpts): Promise<T> {
       return new Promise<T>((resolve, reject) => {
-        queues[opts.priority ?? 1].push({
+        const q = queues[opts.priority ?? 1] ?? queues[1]!
+        q.push({
           task: task as (s: AbortSignal) => Promise<unknown>,
           opts,
           resolve: resolve as (v: unknown) => void,

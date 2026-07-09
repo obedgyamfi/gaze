@@ -14,6 +14,10 @@ import type { Stores } from "@morgana/web-core"
 export function makeNodeDriver(dbPath: string): SqliteDriver {
   mkdirSync(dirname(dbPath), { recursive: true })
   const db = new DatabaseSync(dbPath)
+  // Guard the raw connection before any statement runs (see bun.ts): the desktop writer
+  // and the sidecar share this WAL file, so a startup statement racing a concurrent write
+  // must wait out the lock rather than throw SQLITE_BUSY.
+  db.exec("PRAGMA busy_timeout = 5000")
   return {
     exec: (sql) => db.exec(sql),
     run: (sql, params = []) => void db.prepare(sql).run(...(params as never[])),

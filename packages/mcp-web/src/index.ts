@@ -7,15 +7,21 @@
 // Config via env: MORGANA_CAPTURE_DB (durable captures + persisted findings +
 // firing), MORGANA_SCOPE_HOSTS (comma-separated ROE allowlist).
 
+import { appendFileSync, mkdirSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   ALL_TOOLS,
+  createDynamicScopeGuard,
   createEnrichedGraphStore,
   createFetchFire,
   createInMemoryStores,
+  createNodeHttp,
+  createScheduler,
   createSeedKnowledgeBase,
   type CaptureSource,
+  type CollectRuntime,
   type HandlerCtx,
   type Stores,
 } from "@morgana/web-core"
@@ -34,16 +40,39 @@ const emptyCaptureSource: CaptureSource = {
 export function createServer(opts?: { scopeHosts?: string[]; captureSource?: CaptureSource; stores?: Stores; fire?: HandlerCtx["fire"] }): McpServer {
   const captureSource = opts?.captureSource ?? emptyCaptureSource
   const stores = opts?.stores ?? createInMemoryStores()
+  const envScope = opts?.scopeHosts ?? []
+  // The engagement scope is read LIVE from the per-workspace store (set in the desktop
+  // Web → Scope panel), falling back to the MORGANA_SCOPE_HOSTS env for CLI/dev use. A
+  // dynamic ScopeGuard re-reads it on every request, so editing scope in the UI takes
+  // effect on the next tool call with no MCP restart. Empty scope ⇒ deny-by-default:
+  // the discovery/recon tools refuse (see tools-collect). `ingest` only PERSISTS each
+  // observation; it surfaces in the graph on the next read (Option A — rebuild-safe).
+  const currentScope = (): string[] => {
+    const stored = stores.scope.get()
+    return stored.length ? stored : envScope
+  }
+  const scope = createDynamicScopeGuard(currentScope, true)
+  const scheduler = createScheduler()
+  const collect: CollectRuntime = {
+    scope,
+    scheduler,
+    net: createNodeHttp({ scope, scheduler }),
+    ingest: (o) => stores.observations.put(o),
+  }
+
   const ctx: HandlerCtx = {
-    store: createEnrichedGraphStore(captureSource),
+    store: createEnrichedGraphStore(captureSource, stores.observations),
     captureSource,
-    scopeHosts: opts?.scopeHosts ?? [],
+    scopeHosts: currentScope(),
     evidence: stores.evidence,
     findings: stores.findings,
     notes: stores.notes,
     canvases: stores.canvases,
+    observations: stores.observations,
+    scope: stores.scope,
     kb: createSeedKnowledgeBase(),
     fire: opts?.fire,
+    collect,
   }
 
   const server = new McpServer({ name: "morgana-web", version: "0.0.0" })
@@ -89,5 +118,32 @@ async function main(): Promise<void> {
   await server.connect(new StdioServerTransport())
 }
 
-// Run as a stdio server when invoked directly.
-if ((import.meta as { main?: boolean }).main) void main()
+/** Record a fatal startup failure where it can actually be seen. stdout is the JSON-RPC
+ *  channel (must stay clean) and opencode pipes but never reads our stderr, so an
+ *  uncaught throw here otherwise reaches the client only as an opaque
+ *  "-32000: Connection closed". Log to stderr AND a file next to the workspace db. */
+function reportFatal(err: unknown): void {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
+  const line = `[${new Date().toISOString()}] morgana-web fatal startup error (cwd=${process.cwd()}):\n${detail}\n`
+  // eslint-disable-next-line no-console
+  console.error(line)
+  try {
+    const dataDir = process.env["MORGANA_DATA_DIR"] ?? process.env["XDG_STATE_HOME"]
+    const dbPath = process.env["MORGANA_CAPTURE_DB"] ?? (dataDir ? workspaceDbPath(dataDir, process.cwd()) : undefined)
+    if (dbPath) {
+      mkdirSync(dirname(dbPath), { recursive: true })
+      appendFileSync(join(dirname(dbPath), "mcp-web-crash.log"), line)
+    }
+  } catch {
+    /* best-effort — stderr already has it */
+  }
+}
+
+// Run as a stdio server when invoked directly. Surface a startup failure instead of
+// swallowing it: exit non-zero so the failure is unambiguous, with the reason recorded.
+if ((import.meta as { main?: boolean }).main) {
+  main().catch((err) => {
+    reportFatal(err)
+    process.exit(1)
+  })
+}

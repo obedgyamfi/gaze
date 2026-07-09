@@ -49,6 +49,7 @@ export const raceOracle: Oracle<RaceCandidate> = {
     const signal = `${oks.length}/${n} concurrent requests accepted (expected ${expected}) — race condition`
     const baseline = oks[0]
     const test = oks[oks.length - 1]
+    if (!baseline || !test) return null
     const baselineCaptureId = baseline.captureId ?? "race-baseline"
     const testCaptureId = test.captureId ?? "race-test"
     return {

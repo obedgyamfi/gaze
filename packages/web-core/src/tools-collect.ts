@@ -5,7 +5,7 @@
 // scoped network requests, so they are NOT read-only and refuse without a runtime.
 
 import { z } from "zod"
-import { defineTool, out, type HandlerCtx, type ToolSpec } from "./tools.js"
+import { defineTool, out, type HandlerCtx, type ToolOutput, type ToolSpec } from "./tools.js"
 import type { CollectorCtx, Observation } from "./collect/types.js"
 import { crawlerCollector } from "./collect/collectors/crawler.js"
 import { jsAnalyzerCollector } from "./collect/collectors/js-analyzer.js"
@@ -24,7 +24,7 @@ function collectorCtx(ctx: HandlerCtx, onEmit: (o: Observation) => void): Collec
       c.ingest(o)
       onEmit(o)
     },
-    workspace: { evidence: ctx.evidence, findings: ctx.findings, notes: ctx.notes, canvases: ctx.canvases },
+    workspace: { evidence: ctx.evidence, findings: ctx.findings, notes: ctx.notes, canvases: ctx.canvases, observations: ctx.observations, scope: ctx.scope },
     signal: ctx.signal ?? new AbortController().signal,
     log: () => {},
   }
@@ -32,6 +32,19 @@ function collectorCtx(ctx: HandlerCtx, onEmit: (o: Observation) => void): Collec
 
 const noRuntime = (name: string) =>
   out(name, { error: "collection runtime unavailable in this host (read-only / autonomous mode)" })
+
+/** Gate every active discovery/recon tool on a usable runtime AND a defined scope.
+ *  Returns an error ToolOutput to short-circuit, or null to proceed. Deny-by-default:
+ *  with no in-scope host, egress is refused — the operator must authorize targets first. */
+function scopeGate(ctx: HandlerCtx, name: string): ToolOutput | null {
+  if (!ctx.collect) return noRuntime(name)
+  if (ctx.collect.scope.rules.hosts.length === 0)
+    return out(name, {
+      error:
+        "No scope defined for this engagement. Add in-scope host(s) in the desktop Web → Overview → Scope panel (e.g. acme.test, *.acme.test) before running discovery or recon tools.",
+    })
+  return null
+}
 
 export const COLLECT_TOOLS: ToolSpec[] = [
   defineTool({
@@ -45,7 +58,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
       max_depth: z.number().int().min(0).max(10).optional(),
     },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("web_crawl")
+      const gate = scopeGate(ctx, "web_crawl")
+      if (gate) return gate
       let emitted = 0
       const res = await crawlerCollector.run(collectorCtx(ctx, () => emitted++), {
         seeds: args.seeds,
@@ -62,7 +76,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
     readOnly: false,
     args: { urls: z.array(z.string().url()).min(1), base_url: z.string().url().optional() },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("web_analyze_js")
+      const gate = scopeGate(ctx, "web_analyze_js")
+      if (gate) return gate
       let emitted = 0
       const res = await jsAnalyzerCollector.run(collectorCtx(ctx, () => emitted++), {
         urls: args.urls,
@@ -82,7 +97,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
       extensions: z.array(z.string()).optional(),
     },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("web_discover_content")
+      const gate = scopeGate(ctx, "web_discover_content")
+      if (gate) return gate
       let emitted = 0
       const res = await contentDiscoveryCollector.run(collectorCtx(ctx, () => emitted++), {
         baseUrl: args.base_url,
@@ -99,7 +115,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
     readOnly: false,
     args: { url: z.string().url(), params: z.array(z.string()).min(1) },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("web_mine_params")
+      const gate = scopeGate(ctx, "web_mine_params")
+      if (gate) return gate
       let emitted = 0
       const res = await paramMinerCollector.run(collectorCtx(ctx, () => emitted++), { url: args.url, params: args.params })
       return out("web_mine_params", { found: res.emitted, truncated: res.truncated })
@@ -112,7 +129,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
     readOnly: false,
     args: { hosts: z.array(z.string()).min(1) },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("recon_takeover_check")
+      const gate = scopeGate(ctx, "recon_takeover_check")
+      if (gate) return gate
       let emitted = 0
       const res = await subdomainTakeoverCollector.run(collectorCtx(ctx, () => emitted++), { hosts: args.hosts })
       return out("recon_takeover_check", { candidates: res.emitted, truncated: res.truncated })
@@ -125,7 +143,8 @@ export const COLLECT_TOOLS: ToolSpec[] = [
     readOnly: false,
     args: { url: z.string().url(), graphql_url: z.string().url().optional() },
     async handler(args, ctx) {
-      if (!ctx.collect) return noRuntime("web_import_schema")
+      const gate = scopeGate(ctx, "web_import_schema")
+      if (gate) return gate
       let emitted = 0
       const res = await apiSchemaCollector.run(collectorCtx(ctx, () => emitted++), {
         url: args.url,

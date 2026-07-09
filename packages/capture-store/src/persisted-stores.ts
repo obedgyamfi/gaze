@@ -3,7 +3,7 @@
 // JSON blobs keyed by id (small, structured) in the same engagement db as the
 // captures, so findings/evidence survive restarts alongside proxy/repeater data.
 
-import { summarizeCanvas, type CanvasRecord, type Finding, type Note, type OracleEvidence, type Stores } from "@morgana/web-core"
+import { observationId, summarizeCanvas, type CanvasRecord, type Finding, type Note, type Observation, type OracleEvidence, type Stores } from "@morgana/web-core"
 import type { SqliteDriver } from "./driver.js"
 
 export function createSqliteStores(db: SqliteDriver): Stores {
@@ -12,6 +12,8 @@ export function createSqliteStores(db: SqliteDriver): Stores {
   db.exec(`CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, json TEXT NOT NULL)`)
   db.exec(`CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, nodeId TEXT, json TEXT NOT NULL)`)
   db.exec(`CREATE TABLE IF NOT EXISTS canvases (id TEXT PRIMARY KEY, json TEXT NOT NULL, updatedAt INTEGER NOT NULL)`)
+  db.exec(`CREATE TABLE IF NOT EXISTS observations (id TEXT PRIMARY KEY, kind TEXT NOT NULL, json TEXT NOT NULL)`)
+  db.exec(`CREATE TABLE IF NOT EXISTS scope (id INTEGER PRIMARY KEY, hosts TEXT NOT NULL)`)
 
   return {
     evidence: {
@@ -45,6 +47,30 @@ export function createSqliteStores(db: SqliteDriver): Stores {
       },
       list: () => db.all<{ json: string }>(`SELECT json FROM canvases ORDER BY updatedAt DESC`).map((r) => summarizeCanvas(JSON.parse(r.json) as CanvasRecord)),
       remove: (id) => db.run(`DELETE FROM canvases WHERE id = ?`, [id]),
+    },
+    observations: {
+      // Content-addressed id ⇒ INSERT OR REPLACE is idempotent (re-emit ≠ duplicate row).
+      put: (o) => db.run(`INSERT OR REPLACE INTO observations (id, kind, json) VALUES (?, ?, ?)`, [observationId(o), o.kind, JSON.stringify(o)]),
+      list: () => db.all<{ json: string }>(`SELECT json FROM observations`).map((r) => JSON.parse(r.json) as Observation),
+    },
+    scope: {
+      // Single-row (id=1) host allow-list. Written by the desktop (node driver), read
+      // LIVE by the mcp-web ScopeGuard (bun driver) on the same WAL file — so a scope
+      // change in the UI reaches the discovery tools without restarting the MCP server.
+      get: () => {
+        const row = db.get<{ hosts: string }>(`SELECT hosts FROM scope WHERE id = 1`)
+        if (!row) return []
+        try {
+          const parsed = JSON.parse(row.hosts)
+          return Array.isArray(parsed) ? (parsed as string[]) : []
+        } catch {
+          return []
+        }
+      },
+      set: (hosts) => {
+        const clean = [...new Set(hosts.map((s) => s.trim()).filter(Boolean))]
+        db.run(`INSERT OR REPLACE INTO scope (id, hosts) VALUES (1, ?)`, [JSON.stringify(clean)])
+      },
     },
   }
 }

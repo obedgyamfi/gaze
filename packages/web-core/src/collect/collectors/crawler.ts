@@ -14,7 +14,7 @@ export interface CrawlerConfig {
   maxBytes?: number
 }
 
-const norm = (u: string) => u.split("#")[0]
+const norm = (u: string) => u.split("#")[0] ?? u
 const hostOf = (u: string): string | undefined => {
   try {
     return new URL(u).hostname

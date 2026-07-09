@@ -10,6 +10,12 @@ import type { Stores } from "@morgana/web-core"
 export function makeBunDriver(dbPath: string): SqliteDriver {
   mkdirSync(dirname(dbPath), { recursive: true })
   const db = new Database(dbPath, { create: true })
+  // Set the busy timeout on the RAW connection before any other statement runs. The
+  // desktop (node:sqlite) and the sidecar (two bun:sqlite handles) all write this same
+  // WAL file; without this, a startup CREATE TABLE that races a concurrent write throws
+  // SQLITE_BUSY immediately — which, from `void main()`, becomes an opaque process exit
+  // and the MCP client reports "-32000: Connection closed". Wait out the lock instead.
+  db.run("PRAGMA busy_timeout = 5000")
   return {
     exec: (sql) => db.run(sql),
     run: (sql, params = []) => void db.query(sql).run(...(params as never[])),

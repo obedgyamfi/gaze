@@ -46,6 +46,7 @@ export const logicOracle: Oracle<LogicScenario> = {
 
     const baseline = results[0]
     const test = results[results.length - 1]
+    if (!baseline || !test) return null
     const baselineCaptureId = baseline.captureId ?? `logic-${baseline.name}`
     const testCaptureId = test.captureId ?? `logic-${test.name}`
     return {

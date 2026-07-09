@@ -1,15 +1,18 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { useLocation } from "@solidjs/router"
 import { Portal } from "solid-js/web"
+import type { Observation } from "@morgana/web-core/graph"
 import { IconButton } from "@opencode-ai/ui/icon-button"
 import { Icon } from "@opencode-ai/ui/icon"
 import { Tooltip } from "@opencode-ai/ui/tooltip"
+import { decode64 } from "@/utils/base64"
 import { useWebCapture } from "@/context/web-capture"
 import { useWorkspaceDock } from "@/context/workspace-dock"
 import { buildTree, CATEGORY_META } from "./graph-model"
 import { GraphCanvas, type GraphCanvasApi } from "./graph-canvas"
 import { NodeInspector } from "./node-inspector"
 import { collapsedSet, graphState, setGraphState } from "./graph-state"
-import { useSecurityGraph } from "./use-security-graph"
+import { useSecurityGraph, type SecurityGraphInput } from "./use-security-graph"
 import { lensById } from "./lenses/registry"
 import { applyRiskHeat } from "./lenses/overlays"
 import { LayerSwitcher } from "./layer-switcher"
@@ -47,8 +50,33 @@ export default function GraphTool() {
   })
   onCleanup(() => timer && clearTimeout(timer))
 
-  // The single SPG the agent also reasons over — every lens projects from this.
-  const spg = useSecurityGraph(snapshot)
+  // Persisted discovered surface (crawler / JS / recon), written by the agent to the
+  // same per-workspace db. No live stream for it, so poll on a gentle cadence; each fold
+  // is idempotent and merges onto captured nodes by id.
+  const location = useLocation()
+  const projectDir = () => decode64(location.pathname.split("/").filter(Boolean)[0] ?? "") || ""
+  const [observations, setObservations] = createSignal<Observation[]>([])
+  const refreshObservations = async () => {
+    const api = window.api?.morgana
+    const dir = projectDir()
+    if (!api?.observations || !dir) return
+    try {
+      setObservations(await api.observations(dir))
+    } catch {
+      /* db not ready yet — keep the current set */
+    }
+  }
+  onMount(() => {
+    void refreshObservations()
+    const poll = setInterval(() => void refreshObservations(), 4000)
+    onCleanup(() => clearInterval(poll))
+  })
+
+  // The single SPG the agent also reasons over — every lens projects from this. Combines
+  // captured traffic (throttled) with the polled discovery set, so the graph refolds when
+  // either changes.
+  const spgInput = createMemo<SecurityGraphInput>(() => ({ ...snapshot(), observations: observations() }))
+  const spg = useSecurityGraph(spgInput)
 
   const tree = createMemo(() => {
     const s = snapshot()

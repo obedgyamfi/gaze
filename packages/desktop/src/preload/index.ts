@@ -95,6 +95,9 @@ const api: ElectronAPI = {
   morgana: {
     findings: (projectDir) => ipcRenderer.invoke("morgana-findings", projectDir),
     notes: (projectDir) => ipcRenderer.invoke("morgana-notes", projectDir),
+    observations: (projectDir) => ipcRenderer.invoke("morgana-observations", projectDir),
+    scopeGet: (projectDir) => ipcRenderer.invoke("morgana-scope-get", projectDir),
+    scopeSet: (projectDir, hosts) => ipcRenderer.invoke("morgana-scope-set", projectDir, hosts),
     canvasList: (projectDir) => ipcRenderer.invoke("morgana-canvas-list", projectDir),
     canvasRead: (projectDir, id) => ipcRenderer.invoke("morgana-canvas-read", projectDir, id),
     canvasSave: (projectDir, doc) => ipcRenderer.invoke("morgana-canvas-save", projectDir, doc),

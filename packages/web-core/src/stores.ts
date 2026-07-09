@@ -6,6 +6,8 @@
 import { createHash } from "node:crypto"
 import type { Finding, Note, OracleEvidence, OracleVerdict } from "./types.js"
 import { type CanvasRecord, type CanvasSummary, summarizeCanvas } from "./canvas.js"
+import type { Observation } from "./collect/types.js"
+import { observationId } from "./collect/ingest.js"
 
 /** `ev-<sha1(baselineCaptureId:testCaptureId:verdict:signal)>` — immutable checksum id. */
 export function stampEvidenceId(baselineCaptureId: string, testCaptureId: string, verdict: OracleVerdict, signal: string): string {
@@ -33,12 +35,30 @@ export interface CanvasStore {
   list(): CanvasSummary[]
   remove(id: string): void
 }
+/** Durable collector Observations, so discovered attack surface survives capture-driven
+ *  graph rebuilds (and restarts). Keyed by the content-addressed `observationId`, so
+ *  `put` is idempotent — re-emitting the same finding never duplicates a row. Fold the
+ *  whole set back in after buildEnrichedGraph via `foldObservations`. */
+export interface ObservationStore {
+  put(obs: Observation): void
+  list(): Observation[]
+}
+/** The engagement's Rules of Engagement: the in-scope host allow-list for active tools.
+ *  Per-workspace and durable (set in the desktop UI, read live by the MCP's ScopeGuard),
+ *  so discovery/recon tools egress ONLY to hosts the operator authorized. Empty ⇒ every
+ *  active tool refuses (deny-by-default). Host globs, e.g. "acme.test", "*.acme.test". */
+export interface ScopeStore {
+  get(): string[]
+  set(hosts: string[]): void
+}
 
 export interface Stores {
   evidence: EvidenceStore
   findings: FindingStore
   notes: NoteStore
   canvases: CanvasStore
+  observations: ObservationStore
+  scope: ScopeStore
 }
 
 export function createInMemoryStores(): Stores {
@@ -46,6 +66,8 @@ export function createInMemoryStores(): Stores {
   const findings = new Map<string, Finding>()
   const notes: Note[] = []
   const canvases = new Map<string, CanvasRecord>()
+  const observations = new Map<string, Observation>()
+  let scopeHosts: string[] = []
   return {
     evidence: {
       put: (e) => void evidence.set(e.id, e),
@@ -66,6 +88,14 @@ export function createInMemoryStores(): Stores {
       get: (id) => canvases.get(id),
       list: () => [...canvases.values()].map(summarizeCanvas).sort((a, b) => b.updatedAt - a.updatedAt),
       remove: (id) => void canvases.delete(id),
+    },
+    observations: {
+      put: (o) => void observations.set(observationId(o), o),
+      list: () => [...observations.values()],
+    },
+    scope: {
+      get: () => [...scopeHosts],
+      set: (h) => void (scopeHosts = [...new Set(h.map((s) => s.trim()).filter(Boolean))]),
     },
   }
 }

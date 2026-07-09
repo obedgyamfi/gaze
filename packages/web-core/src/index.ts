@@ -12,7 +12,7 @@ export * from "./capture-source.js"
 export { buildEnrichedGraph, resolveCaptureNode, nodeId, edgeId, type ResolvedNode } from "./graph/enriched.js"
 export { enrichTaint, type TaintObservation } from "./graph/taint.js"
 export { buildBaseGraph, categoryOf } from "./graph/base.js"
-export { createEnrichedGraphStore, type GraphStore, type EvidenceResult, type CaptureBody } from "./store.js"
+export { createEnrichedGraphStore, type GraphStore, type ObservationSource, type EvidenceResult, type CaptureBody } from "./store.js"
 export { differential, type OracleRuling } from "./oracle.js"
 export {
   stampEvidenceId,
@@ -21,6 +21,8 @@ export {
   type FindingStore,
   type NoteStore,
   type CanvasStore,
+  type ObservationStore,
+  type ScopeStore,
   type Stores,
 } from "./stores.js"
 export {

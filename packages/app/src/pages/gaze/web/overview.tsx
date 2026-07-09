@@ -16,6 +16,7 @@ export default function WebOverview() {
   const projectDir = () => decode64(location.pathname.split("/").filter(Boolean)[0] ?? "") || ""
   const [status, setStatus] = createSignal<BrowserStatus>({ running: false })
   const [busy, setBusy] = createSignal(false)
+  const morgana = () => window.api?.morgana
 
   onMount(() => {
     if (!browser) return
@@ -23,6 +24,56 @@ export default function WebOverview() {
     const unsubscribe = browser.subscribe(projectDir(), setStatus)
     onCleanup(unsubscribe)
   })
+
+  // ── Engagement scope (ROE) — gates the agent's active MCP tools ─────────────
+  const [scope, setScope] = createSignal<string[]>([])
+  const [scopeText, setScopeText] = createSignal("")
+  const [savingScope, setSavingScope] = createSignal(false)
+
+  const loadScope = async () => {
+    const api = morgana()
+    if (!api?.scopeGet) return
+    try {
+      const hosts = await api.scopeGet(projectDir())
+      setScope(hosts)
+      setScopeText(hosts.join("\n"))
+    } catch {
+      /* db not ready yet — leave empty */
+    }
+  }
+  onMount(loadScope)
+
+  // Split on whitespace/commas; dedupe; drop blanks.
+  const parseHosts = (text: string) => [...new Set(text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean))]
+
+  const saveScope = async () => {
+    const api = morgana()
+    if (!api?.scopeSet || savingScope()) return
+    setSavingScope(true)
+    try {
+      const hosts = parseHosts(scopeText())
+      await api.scopeSet(projectDir(), hosts)
+      setScope(hosts)
+      setScopeText(hosts.join("\n"))
+      showToast({
+        variant: "success",
+        title: hosts.length ? "Scope saved" : "Scope cleared",
+        description: hosts.length
+          ? `${hosts.length} in-scope host${hosts.length === 1 ? "" : "s"} — discovery tools enabled.`
+          : "Active discovery/recon tools are now disabled.",
+      })
+    } catch (error) {
+      showToast({
+        variant: "error",
+        title: "Could not save scope",
+        description: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setSavingScope(false)
+    }
+  }
+
+  const scopeDirty = () => parseHosts(scopeText()).join("\n") !== scope().join("\n")
 
   const launch = async () => {
     if (!browser || busy()) return
@@ -63,6 +114,63 @@ export default function WebOverview() {
             Launch a Chromium browser for this engagement. Traffic and DOM events from the spawned browser feed the
             attack-surface graph; the agent drives testing through the web module's MCP tools.
           </span>
+        </div>
+
+        <div class="rounded-xl border border-border-weak-base bg-background-stronger p-5 flex flex-col gap-4">
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-14-medium text-text-strong">Scope</span>
+              <span
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-12-medium bg-surface-base"
+                classList={{ "text-text-base": scope().length > 0, "text-text-weak": scope().length === 0 }}
+              >
+                <span
+                  class="size-1.5 rounded-full"
+                  classList={{ "bg-icon-success-base": scope().length > 0, "bg-icon-warning-base": scope().length === 0 }}
+                />
+                {scope().length > 0 ? `${scope().length} in scope` : "Not set"}
+              </span>
+            </div>
+            <span class="text-12-regular text-text-weak" style={{ "line-height": "var(--line-height-normal)" }}>
+              The Rules of Engagement for this workspace. The agent's active tools (crawl, discover, JS analysis, param
+              mining, takeover checks, HTTP send) egress <span class="text-text-base">only</span> to these hosts — with an
+              empty scope they refuse. One host glob per line or comma-separated, e.g. <span class="font-mono text-text-base">acme.test</span>,{" "}
+              <span class="font-mono text-text-base">*.acme.test</span>.
+            </span>
+          </div>
+
+          <Show
+            when={morgana()?.scopeSet}
+            fallback={<span class="text-12-regular text-text-weak">Scope editing is only available in the desktop app.</span>}
+          >
+            <textarea
+              value={scopeText()}
+              onInput={(e) => setScopeText(e.currentTarget.value)}
+              placeholder={"acme.test\n*.acme.test"}
+              spellcheck={false}
+              rows={4}
+              class="w-full resize-y rounded-md border border-border-weak-base bg-surface-base px-3 py-2 font-mono text-12-regular text-text-base outline-none placeholder:text-text-weak focus:border-border-base"
+            />
+            <Show when={scope().length > 0}>
+              <div class="flex flex-wrap gap-1.5">
+                <For each={scope()}>
+                  {(h) => (
+                    <span class="inline-flex items-center rounded-full bg-surface-base px-2 py-0.5 font-mono text-12-regular text-text-base">
+                      {h}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <div class="flex items-center gap-2">
+              <Button size="small" disabled={savingScope() || !scopeDirty()} onClick={saveScope}>
+                {savingScope() ? "Saving…" : "Save scope"}
+              </Button>
+              <Show when={scope().length === 0}>
+                <span class="text-12-regular text-text-weak">Active discovery/recon tools are disabled until a scope is set.</span>
+              </Show>
+            </div>
+          </Show>
         </div>
 
         <div class="rounded-xl border border-border-weak-base bg-background-stronger p-5 flex flex-col gap-4">

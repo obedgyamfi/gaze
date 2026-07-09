@@ -10,6 +10,7 @@ export {
   type ScopeGuard,
   ScopeViolation,
   createScopeGuard,
+  createDynamicScopeGuard,
   isIpv4,
   ipToInt,
   inCidr,
@@ -36,7 +37,7 @@ export type {
   Oracle,
 } from "./types.js"
 
-export { foldObservation } from "./ingest.js"
+export { foldObservation, foldObservations, observationId } from "./ingest.js"
 export { type Registry, createRegistry, type CollectorRegistry, type OracleRegistry } from "./registry.js"
 
 // ── analysis + collectors ──

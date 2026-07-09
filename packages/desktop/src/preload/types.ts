@@ -123,6 +123,12 @@ export type CanvasDoc = {
 export type MorganaAPI = {
   findings: (projectDir: string) => Promise<FindingSummary[]>
   notes: (projectDir: string) => Promise<NoteSummary[]>
+  // Discovered surface as opaque rows — the renderer casts to web-core's Observation to
+  // fold. Structural here so the preload stays free of a web-core dependency.
+  observations: (projectDir: string) => Promise<unknown[]>
+  // Per-workspace engagement scope (in-scope host globs). Gates the active MCP tools.
+  scopeGet: (projectDir: string) => Promise<string[]>
+  scopeSet: (projectDir: string, hosts: string[]) => Promise<void>
   canvasList: (projectDir: string) => Promise<CanvasSummary[]>
   canvasRead: (projectDir: string, id: string) => Promise<CanvasDoc | null>
   canvasSave: (projectDir: string, doc: CanvasDoc) => Promise<void>

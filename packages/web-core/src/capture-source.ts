@@ -6,7 +6,7 @@
 // the captures implements this; web-core just consumes it.
 
 export type HttpSide = "request" | "response"
-export type CaptureRecordSource = "browser" | "repeater"
+export type CaptureRecordSource = "browser" | "repeater" | "proxy"
 
 export interface HeaderPair {
   name: string

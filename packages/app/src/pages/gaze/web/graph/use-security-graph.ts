@@ -1,5 +1,5 @@
 import { createMemo, type Accessor } from "solid-js"
-import { buildEnrichedGraph, type Graph } from "@morgana/web-core/graph"
+import { buildEnrichedGraph, foldObservations, type Graph, type Observation } from "@morgana/web-core/graph"
 import type { CaptureRecord, FormRecord, NavRecord } from "@/web/capture-types"
 
 // ── The seam ──────────────────────────────────────────────────────────────────
@@ -16,8 +16,17 @@ export interface SecurityGraphInput {
   captures: CaptureRecord[]
   navs: NavRecord[]
   forms: FormRecord[]
+  /** Persisted collector discoveries (crawler / JS / content / recon). Folded onto the
+   *  captured graph client-side — the SAME durable fold the agent's GraphStore applies,
+   *  so discovered endpoints merge onto captured nodes by id (no parallel node). */
+  observations?: Observation[]
 }
 
 export function useSecurityGraph(input: Accessor<SecurityGraphInput>): Accessor<Graph> {
-  return createMemo(() => buildEnrichedGraph(input()))
+  return createMemo(() => {
+    const i = input()
+    const g = buildEnrichedGraph(i)
+    if (i.observations?.length) foldObservations(g, i.observations)
+    return g
+  })
 }

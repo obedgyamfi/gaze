@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createScopeGuard, inCidr, isPrivateIp, ScopeViolation } from "./scope.js"
+import { createDynamicScopeGuard, createScopeGuard, inCidr, isPrivateIp, ScopeViolation } from "./scope.js"
 
 describe("host-glob scope", () => {
   const g = createScopeGuard({ hosts: ["acme.test", "*.acme.test"], denyPrivate: true })
@@ -16,6 +16,33 @@ describe("host-glob scope", () => {
   test("assert throws for out-of-scope", () => {
     expect(() => g.assert({ host: "evil.com" })).toThrow(ScopeViolation)
     expect(() => g.assert({ host: "app.acme.test" })).not.toThrow()
+  })
+})
+
+describe("dynamic scope guard", () => {
+  test("reads the host list LIVE on each check (runtime scope edits take effect)", () => {
+    let hosts: string[] = []
+    const g = createDynamicScopeGuard(() => hosts, true)
+
+    // Empty scope ⇒ deny-by-default.
+    expect(g.allows({ host: "acme.test" })).toBe(false)
+    expect(g.rules.hosts).toEqual([])
+
+    // Operator sets scope at runtime — no new guard, same object.
+    hosts = ["*.acme.test"]
+    expect(g.allows({ host: "app.acme.test" })).toBe(true)
+    expect(g.allows({ host: "evil.com" })).toBe(false)
+    expect(g.rules.hosts).toEqual(["*.acme.test"])
+
+    // And narrowing scope revokes access immediately.
+    hosts = []
+    expect(() => g.assert({ host: "app.acme.test" })).toThrow(ScopeViolation)
+  })
+
+  test("still enforces denyPrivate against live hosts", () => {
+    const g = createDynamicScopeGuard(() => ["*.acme.test"], true)
+    expect(g.allows({ host: "127.0.0.1" })).toBe(false)
+    expect(g.allows({ host: "169.254.169.254" })).toBe(false)
   })
 })
 

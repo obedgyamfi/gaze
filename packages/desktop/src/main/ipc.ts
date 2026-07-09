@@ -137,6 +137,23 @@ export function registerIpcHandlers(deps: Deps) {
     (workspaceStores.findings(projectDir)?.notes.list() ?? []).map((n) => ({ id: n.id, nodeId: n.nodeId, text: n.text, tags: n.tags, createdAt: n.createdAt })),
   )
 
+  // Persisted collector observations (discovered attack surface). The renderer folds
+  // these onto the enriched graph client-side (foldObservations is browser-safe), so a
+  // discovered endpoint shows up in the graph exactly as the agent sees it.
+  ipcMain.handle("morgana-observations", (_event: IpcMainInvokeEvent, projectDir: string): unknown[] =>
+    workspaceStores.findings(projectDir)?.observations.list() ?? [],
+  )
+
+  // Per-workspace engagement scope (ROE). Written here from the Web → Overview panel and
+  // read LIVE by the mcp-web ScopeGuard on the same db, so a scope change reaches the
+  // discovery/recon tools without restarting the MCP server.
+  ipcMain.handle("morgana-scope-get", (_event: IpcMainInvokeEvent, projectDir: string): string[] =>
+    workspaceStores.findings(projectDir)?.scope.get() ?? [],
+  )
+  ipcMain.handle("morgana-scope-set", (_event: IpcMainInvokeEvent, projectDir: string, hosts: string[]): void => {
+    workspaceStores.findings(projectDir)?.scope.set(hosts)
+  })
+
   // Curated canvases — read/written by both the agent (mcp-web) and a human here,
   // on the SAME per-workspace store the findings come from.
   ipcMain.handle("morgana-canvas-list", (_event: IpcMainInvokeEvent, projectDir: string): CanvasSummary[] =>
