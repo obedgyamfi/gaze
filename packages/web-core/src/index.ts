@@ -60,6 +60,7 @@ export { ACTION_TOOLS } from "./tools-action.js"
 export { KNOWLEDGE_TOOLS } from "./tools-knowledge.js"
 export { CANVAS_TOOLS } from "./tools-canvas.js"
 export { createFetchFire } from "./fire.js"
+export * from "./collect/index.js"
 
 /** The full tool surface: read + action + knowledge + canvas. Adapters bind this. */
 export const ALL_TOOLS = [...READ_TOOLS, ...ACTION_TOOLS, ...KNOWLEDGE_TOOLS, ...CANVAS_TOOLS]

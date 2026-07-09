@@ -16,6 +16,12 @@ export type NodeKind =
   | "EndpointTemplate" // /orders/{id} — the family that collapses id-bearing instances
   | "Value" // a sensitive/identifying value (secret, token, email…) stored as a FINGERPRINT
   | "TrustZone" // first-party / third-party / internal — the privilege levels boundaries divide
+  // ── discovery entities (collectors: recon / crawl / js / api) ──
+  | "Host" // a discovered host/asset (subdomain, resolved target)
+  | "Service" // a host:port service (banner/proto) — network/recon surface
+  | "Certificate" // a TLS certificate observed on a host (SANs feed asset discovery)
+  | "JsAsset" // a loaded script analysed for endpoints/secrets
+  | "SecretRef" // a discovered secret, stored as a FINGERPRINT ref (never the value)
 
 export type EdgeKind =
   | "NAVIGATES_TO"
@@ -34,6 +40,12 @@ export type EdgeKind =
   | "FLOWS_TO" // Value → node it was sent to (taint/data-flow); secret leak, SSRF
   | "REFLECTS" // Value → node whose response echoed it un-encoded (XSS/injection seed)
   | "IN_ZONE" // Domain → TrustZone membership
+  // ── discovery edges (collectors) ──
+  | "RESOLVES_TO" // Host → Host/Service (DNS / asset expansion)
+  | "SERVES" // Host → Service/Certificate observed on it
+  | "EXPOSES_ENDPOINT" // JsAsset/Certificate/Host → Endpoint it revealed
+  | "HOLDS_SECRET" // node → SecretRef discovered in/at it
+  | "TAKEOVER_CANDIDATE" // Host → the service it dangles at (subdomain takeover)
 
 export type RiskLevel = "critical" | "high" | "medium" | "low" | "none"
 export type StatusClass = "1xx" | "2xx" | "3xx" | "4xx" | "5xx"
