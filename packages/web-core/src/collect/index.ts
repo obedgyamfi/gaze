@@ -38,3 +38,7 @@ export type {
 
 export { foldObservation } from "./ingest.js"
 export { type Registry, createRegistry, type CollectorRegistry, type OracleRegistry } from "./registry.js"
+
+// ── analysis + collectors ──
+export { shannonEntropy, detectSecrets, extractEndpoints } from "./analyze-js.js"
+export { jsAnalyzerCollector, type JsAnalyzerConfig } from "./collectors/js-analyzer.js"
