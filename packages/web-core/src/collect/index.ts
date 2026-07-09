@@ -48,3 +48,5 @@ export { contentDiscoveryCollector, isHit, type ContentDiscoveryConfig } from ".
 export { paramMinerCollector, type ParamMinerConfig } from "./collectors/param-miner.js"
 export { subdomainTakeoverCollector, type TakeoverConfig } from "./collectors/subdomain-takeover.js"
 export { matchTakeover, TAKEOVER_FINGERPRINTS, type TakeoverMatch, type TakeoverFingerprint } from "./takeover-fingerprints.js"
+export { parseOpenApi, parseGraphqlIntrospection, detectSchemaKind, type ParsedEndpoint } from "./api-schema.js"
+export { apiSchemaCollector, type ApiSchemaConfig } from "./collectors/api-schema.js"
