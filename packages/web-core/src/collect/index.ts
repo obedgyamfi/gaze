@@ -53,3 +53,4 @@ export { apiSchemaCollector, type ApiSchemaConfig } from "./collectors/api-schem
 
 // ── oracles ──
 export { raceOracle, type RaceCandidate, type RaceResult } from "./oracles/race.js"
+export { logicOracle, type LogicScenario, type LogicStep, type LogicStepResult } from "./oracles/logic.js"
