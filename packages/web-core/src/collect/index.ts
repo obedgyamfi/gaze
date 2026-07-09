@@ -46,3 +46,5 @@ export { jsAnalyzerCollector, type JsAnalyzerConfig } from "./collectors/js-anal
 export { crawlerCollector, type CrawlerConfig } from "./collectors/crawler.js"
 export { contentDiscoveryCollector, isHit, type ContentDiscoveryConfig } from "./collectors/content-discovery.js"
 export { paramMinerCollector, type ParamMinerConfig } from "./collectors/param-miner.js"
+export { subdomainTakeoverCollector, type TakeoverConfig } from "./collectors/subdomain-takeover.js"
+export { matchTakeover, TAKEOVER_FINGERPRINTS, type TakeoverMatch, type TakeoverFingerprint } from "./takeover-fingerprints.js"
