@@ -61,6 +61,8 @@ export { KNOWLEDGE_TOOLS } from "./tools-knowledge.js"
 export { CANVAS_TOOLS } from "./tools-canvas.js"
 export { createFetchFire } from "./fire.js"
 export * from "./collect/index.js"
+// Node-only egress runtime (uses node:http/dns) — not part of the browser /graph barrel.
+export { createNodeHttp, type NodeHttpDeps } from "./collect/http-node.js"
 
 /** The full tool surface: read + action + knowledge + canvas. Adapters bind this. */
 export const ALL_TOOLS = [...READ_TOOLS, ...ACTION_TOOLS, ...KNOWLEDGE_TOOLS, ...CANVAS_TOOLS]
