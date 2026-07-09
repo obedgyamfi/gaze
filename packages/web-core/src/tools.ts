@@ -9,6 +9,18 @@ import type { CaptureSource } from "./capture-source.js"
 import type { GraphStore } from "./store.js"
 import type { CanvasStore, EvidenceStore, FindingStore, NoteStore } from "./stores.js"
 import type { KnowledgeBase } from "./kb.js"
+import type { ScopeGuard } from "./collect/scope.js"
+import type { Scheduler } from "./collect/scheduler.js"
+import type { Observation, ScopedHttp } from "./collect/types.js"
+
+/** Live collection runtime the discovery tools need. Host-supplied; absent ⇒ those
+ *  tools refuse (read-only/autonomous hosts). `ingest` folds into the live graph. */
+export interface CollectRuntime {
+  scope: ScopeGuard
+  net: ScopedHttp
+  scheduler: Scheduler
+  ingest: (obs: Observation) => void
+}
 
 /** A host-fired, scoped HTTP request (assisted mode). The host attaches the live
  *  session — by replaying a capture's real auth server-side when `replayCaptureId`
@@ -47,6 +59,8 @@ export interface HandlerCtx {
   kb: KnowledgeBase
   /** Host-fired scoped HTTP; absent ⇒ web_http_send / web_replay refuse. */
   fire?: (req: FireRequest) => Promise<FireResult>
+  /** Live collection runtime; absent ⇒ discovery tools (web_crawl, …) refuse. */
+  collect?: CollectRuntime
 }
 
 export interface ToolOutput {
