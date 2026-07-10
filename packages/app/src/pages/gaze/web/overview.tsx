@@ -2,7 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLocation } from "@solidjs/router"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
-import { usePlatform, type BrowserStatus } from "@/context/platform"
+import { usePlatform, type BrowserStatus, type ProxyStatus } from "@/context/platform"
 import { useWebCapture } from "@/context/web-capture"
 import { decode64 } from "@/utils/base64"
 import { showToast } from "@/utils/toast"
@@ -74,6 +74,53 @@ export default function WebOverview() {
   }
 
   const scopeDirty = () => parseHosts(scopeText()).join("\n") !== scope().join("\n")
+
+  // ── Intercepting proxy (device / emulator capture) ──────────────────────────
+  const proxy = platform.proxy
+  const [proxyStatus, setProxyStatus] = createSignal<ProxyStatus>({ running: false })
+  const [proxyPort, setProxyPort] = createSignal(8080)
+  const [proxyBusy, setProxyBusy] = createSignal(false)
+  const [lanIps, setLanIps] = createSignal<string[]>([])
+  const [caPath, setCaPath] = createSignal("")
+
+  onMount(() => {
+    if (!proxy) return
+    void proxy.status(projectDir()).then((s) => {
+      setProxyStatus(s)
+      if (s.port) setProxyPort(s.port)
+    })
+    onCleanup(proxy.subscribe(projectDir(), setProxyStatus))
+    void proxy.lanIps().then(setLanIps)
+    void proxy.caInfo().then((i) => setCaPath(i.path)).catch(() => {})
+  })
+
+  const toggleProxy = async () => {
+    if (!proxy || proxyBusy()) return
+    setProxyBusy(true)
+    try {
+      if (proxyStatus().running) {
+        await proxy.stop(projectDir())
+      } else {
+        const s = await proxy.start(projectDir(), { port: proxyPort() })
+        setProxyStatus(s)
+        if (s.error) showToast({ variant: "error", title: "Could not start proxy", description: s.error })
+      }
+    } finally {
+      setProxyBusy(false)
+    }
+  }
+
+  const exportCa = async () => {
+    if (!proxy) return
+    try {
+      const path = await proxy.exportCa()
+      if (path) showToast({ variant: "success", title: "CA certificate exported", description: path })
+    } catch (error) {
+      showToast({ variant: "error", title: "Export failed", description: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  const primaryLan = () => lanIps()[0]
 
   const launch = async () => {
     if (!browser || busy()) return
@@ -220,6 +267,88 @@ export default function WebOverview() {
                   Close browser
                 </Button>
               </Show>
+            </div>
+          </Show>
+        </div>
+
+        <div class="rounded-xl border border-border-weak-base bg-background-stronger p-5 flex flex-col gap-4">
+          <div class="flex flex-col gap-1">
+            <div class="flex items-center justify-between gap-4">
+              <span class="text-14-medium text-text-strong">Intercepting proxy</span>
+              <span
+                class="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-12-medium bg-surface-base"
+                classList={{ "text-text-base": proxyStatus().running, "text-text-weak": !proxyStatus().running }}
+              >
+                <span
+                  class="size-1.5 rounded-full"
+                  classList={{ "bg-icon-success-base": proxyStatus().running, "bg-icon-weak-base": !proxyStatus().running }}
+                />
+                {proxyStatus().running ? `Listening :${proxyStatus().port}` : "Idle"}
+              </span>
+            </div>
+            <span class="text-12-regular text-text-weak" style={{ "line-height": "var(--line-height-normal)" }}>
+              A Burp-style HTTP(S) proxy for a phone or emulator (e.g. LDPlayer). Point the device's Wi-Fi proxy at this
+              machine and install the GAZE CA — every request flows into this workspace's graph as{" "}
+              <span class="font-mono text-text-base">proxy</span> traffic.
+            </span>
+          </div>
+
+          <Show
+            when={proxy}
+            fallback={<span class="text-12-regular text-text-weak">The proxy is only available in the desktop app.</span>}
+          >
+            <div class="flex items-center gap-2">
+              <div class="flex h-8 items-center gap-1.5 rounded-md border border-border-weak-base bg-surface-base px-2.5">
+                <span class="text-12-regular text-text-weak">Port</span>
+                <input
+                  type="number"
+                  value={proxyPort()}
+                  disabled={proxyStatus().running}
+                  onInput={(e) => setProxyPort(Number(e.currentTarget.value) || 8080)}
+                  class="w-16 bg-transparent font-mono text-12-regular text-text-base outline-none disabled:opacity-60"
+                />
+              </div>
+              <Button
+                size="large"
+                variant={proxyStatus().running ? "ghost" : "primary"}
+                icon={proxyStatus().running ? "circle-x" : "shield"}
+                disabled={proxyBusy()}
+                onClick={toggleProxy}
+              >
+                {proxyBusy() ? "…" : proxyStatus().running ? "Stop proxy" : "Start proxy"}
+              </Button>
+            </div>
+
+            <Show when={proxyStatus().running}>
+              <div class="rounded-md border border-border-weak-base bg-surface-base px-3 py-2.5 flex flex-col gap-1.5">
+                <span class="text-12-medium text-text-strong">On the emulator, set the Wi-Fi proxy to:</span>
+                <button
+                  type="button"
+                  class="self-start font-mono text-14-medium text-text-base hover:text-text-strong"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`${primaryLan() ?? "YOUR-IP"}:${proxyStatus().port}`)
+                    showToast({ variant: "success", title: "Copied", description: "Proxy address copied to clipboard." })
+                  }}
+                >
+                  {primaryLan() ?? "your-lan-ip"}:{proxyStatus().port} <span class="text-12-regular text-text-weak">— click to copy</span>
+                </button>
+                <Show when={lanIps().length > 1}>
+                  <span class="text-12-regular text-text-weak">Other addresses: {lanIps().slice(1).join(", ")}</span>
+                </Show>
+              </div>
+            </Show>
+
+            <div class="flex items-center justify-between gap-3 border-t border-border-weak-base pt-3">
+              <div class="flex flex-col gap-0.5 min-w-0">
+                <span class="text-12-medium text-text-strong">HTTPS interception certificate</span>
+                <span class="text-12-regular text-text-weak truncate">
+                  Install this CA on the device (LDPlayer is rooted → add as a system cert).
+                  <Show when={caPath()}> Saved at <span class="font-mono">{caPath()}</span>.</Show>
+                </span>
+              </div>
+              <Button size="small" variant="ghost" icon="download" onClick={exportCa}>
+                Export CA
+              </Button>
             </div>
           </Show>
         </div>

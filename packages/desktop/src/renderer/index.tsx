@@ -253,6 +253,16 @@ const createPlatform = (): Platform => {
       subscribe: (projectDir, cb) => window.api.browser.subscribe(projectDir, cb),
     },
 
+    proxy: {
+      start: (projectDir, opts) => window.api.proxy.start(projectDir, opts),
+      stop: (projectDir) => window.api.proxy.stop(projectDir),
+      status: (projectDir) => window.api.proxy.status(projectDir),
+      subscribe: (projectDir, cb) => window.api.proxy.subscribe(projectDir, cb),
+      lanIps: () => window.api.proxy.lanIps(),
+      caInfo: () => window.api.proxy.caInfo(),
+      exportCa: () => window.api.proxy.exportCa(),
+    },
+
     capture: {
       subscribe: (cb) => window.api.capture.subscribe(cb),
       list: (projectDir, filter) => window.api.capture.list(projectDir, filter),

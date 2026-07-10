@@ -20,12 +20,12 @@
   // capture db from XDG_STATE_HOME (the desktop sets it) or the MORGANA_CAPTURE_DB env.
   // NOTE: `command` runs from the project/instance dir — use an ABSOLUTE path if you open
   // a project other than this opencode repo.
-  // "mcp": {
-  //   "morgana-web": {
-  //     "type": "local",
-  //     "command": ["bun", "packages/mcp-web/src/index.ts"],
-  //   },
-  // },
+  "mcp": {
+    "morgana-web": {
+      "type": "local",
+      "command": ["bun", "packages/mcp-web/src/index.ts"],
+    },
+  },
   "tools": {
     "github-triage": false,
     "github-pr-search": false,

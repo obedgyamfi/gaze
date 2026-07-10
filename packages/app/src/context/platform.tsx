@@ -109,6 +109,9 @@ type PlatformBase = {
   /** Spawn and control an external Chromium-based browser for capture (desktop only) */
   browser?: BrowserPlatform
 
+  /** Intercepting HTTP(S) proxy for device/emulator capture (desktop only) */
+  proxy?: ProxyPlatform
+
   /** Live web capture + repeater over the launched browser (desktop only) */
   capture?: CapturePlatform
 
@@ -144,6 +147,23 @@ export type BrowserPlatform = {
   close(projectDir: string): Promise<void>
   status(projectDir: string): Promise<BrowserStatus>
   subscribe(projectDir: string, cb: (status: BrowserStatus) => void): () => void
+}
+
+export type ProxyStatus = {
+  running: boolean
+  host?: string
+  port?: number
+  error?: string
+}
+
+export type ProxyPlatform = {
+  start(projectDir: string, opts?: { host?: string; port?: number }): Promise<ProxyStatus>
+  stop(projectDir: string): Promise<void>
+  status(projectDir: string): Promise<ProxyStatus>
+  subscribe(projectDir: string, cb: (status: ProxyStatus) => void): () => void
+  lanIps(): Promise<string[]>
+  caInfo(): Promise<{ path: string; pem: string }>
+  exportCa(): Promise<string | null>
 }
 
 export const { use: usePlatform, provider: PlatformProvider } = createSimpleContext({

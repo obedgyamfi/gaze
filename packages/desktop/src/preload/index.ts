@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
-import type { BrowserStatus, CaptureStreamEvent, ElectronAPI, WslServersEvent } from "./types"
+import type { BrowserStatus, CaptureStreamEvent, ElectronAPI, ProxyStatus, WslServersEvent } from "./types"
 import type { UpdaterState } from "@opencode-ai/app/updater"
 
 // The workspace project dir keys every per-workspace IPC. With no project open it can
@@ -76,6 +76,25 @@ const api: ElectronAPI = {
       void ipcRenderer.invoke("browser-subscribe", projectDir)
       return () => ipcRenderer.removeListener("browser-status", handler)
     },
+  },
+  proxy: {
+    start: (projectDir, opts) =>
+      validDir(projectDir)
+        ? ipcRenderer.invoke("proxy-start", projectDir, opts)
+        : Promise.reject(new Error("Open a project first — the proxy is scoped to a workspace.")),
+    stop: (projectDir) => (validDir(projectDir) ? ipcRenderer.invoke("proxy-stop", projectDir) : Promise.resolve()),
+    status: (projectDir) =>
+      validDir(projectDir) ? ipcRenderer.invoke("proxy-status", projectDir) : Promise.resolve({ running: false }),
+    subscribe: (projectDir, cb) => {
+      if (!validDir(projectDir)) return () => {}
+      const handler = (_: unknown, status: ProxyStatus) => cb(status)
+      ipcRenderer.on("proxy-status", handler)
+      void ipcRenderer.invoke("proxy-subscribe", projectDir)
+      return () => ipcRenderer.removeListener("proxy-status", handler)
+    },
+    lanIps: () => ipcRenderer.invoke("proxy-lan-ips"),
+    caInfo: () => ipcRenderer.invoke("proxy-ca-info"),
+    exportCa: () => ipcRenderer.invoke("proxy-export-ca"),
   },
   capture: {
     subscribe: (cb) => {

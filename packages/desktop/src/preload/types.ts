@@ -42,6 +42,22 @@ export type BrowserAPI = {
   subscribe: (projectDir: string, cb: (status: BrowserStatus) => void) => () => void
 }
 
+export type ProxyStatus = {
+  running: boolean
+  host?: string
+  port?: number
+  error?: string
+}
+export type ProxyAPI = {
+  start: (projectDir: string, opts?: { host?: string; port?: number }) => Promise<ProxyStatus>
+  stop: (projectDir: string) => Promise<void>
+  status: (projectDir: string) => Promise<ProxyStatus>
+  subscribe: (projectDir: string, cb: (status: ProxyStatus) => void) => () => void
+  lanIps: () => Promise<string[]>
+  caInfo: () => Promise<{ path: string; pem: string }>
+  exportCa: () => Promise<string | null>
+}
+
 export type {
   BodyData,
   CaptureFilter,
@@ -154,6 +170,7 @@ export type ElectronAPI = {
   wslServers: WslServersAPI
   updater: UpdaterAPI
   browser: BrowserAPI
+  proxy: ProxyAPI
   capture: CaptureAPI
   morgana: MorganaAPI
   consumeInitialDeepLinks: () => Promise<string[]>

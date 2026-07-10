@@ -10,7 +10,7 @@ import { CaptureStore } from "./store"
 import { sendRepeater } from "./repeater"
 import { workspaceKey } from "@morgana/capture-store"
 import type { WorkspaceStores } from "./workspace-stores"
-import type { BodyData, CaptureFilter, CaptureRecord, CaptureStreamEvent, HttpSide, RepeaterRequest } from "./types"
+import type { BodyData, CaptureFilter, CaptureRecord, CaptureStreamEvent, HeaderPair, HttpSide, RepeaterRequest } from "./types"
 
 interface Session {
   projectDir: string
@@ -70,6 +70,50 @@ export class CaptureController {
   }
   sendRepeater(projectDir: string, req: RepeaterRequest): Promise<CaptureRecord> {
     return sendRepeater(this.session(projectDir).store, req)
+  }
+
+  // ── proxy ingest ──
+  // The intercepting proxy feeds transactions here as `proxy`-source captures. The store
+  // emits record events → broadcast → durable persistence + renderer stream, exactly like
+  // browser/repeater traffic, so proxied requests populate the same graph.
+  ingestProxyRequest(
+    projectDir: string,
+    ev: { id: string; tsRequest: number; method: string; url: string; requestHeaders: HeaderPair[]; requestBody?: Buffer },
+  ): void {
+    this.session(projectDir).store.insertRequest({
+      id: ev.id,
+      source: "proxy",
+      tsRequest: ev.tsRequest,
+      method: ev.method,
+      url: ev.url,
+      requestHeaders: ev.requestHeaders,
+      requestBodyBytes: ev.requestBody,
+    })
+  }
+  ingestProxyResponse(
+    projectDir: string,
+    ev: {
+      id: string
+      tsResponse: number
+      status?: number
+      statusText?: string
+      httpVersion?: string
+      remoteIp?: string
+      remotePort?: number
+      responseHeaders: HeaderPair[]
+      responseBody?: Buffer
+    },
+  ): void {
+    this.session(projectDir).store.finalizeResponse(ev.id, {
+      tsResponse: ev.tsResponse,
+      status: ev.status,
+      statusText: ev.statusText,
+      httpVersion: ev.httpVersion,
+      remoteIp: ev.remoteIp,
+      remotePort: ev.remotePort,
+      responseHeaders: ev.responseHeaders,
+      responseBodyBytes: ev.responseBody,
+    })
   }
 
   // ── capture lifecycle ──

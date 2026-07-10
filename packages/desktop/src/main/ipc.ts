@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { stat, writeFile, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { networkInterfaces, tmpdir } from "node:os"
 import { basename, join } from "node:path"
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from "electron"
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
@@ -15,6 +15,7 @@ import type { UpdaterController } from "./updater-controller"
 import { createUpdaterSubscriptions } from "./updater-subscriptions"
 import { BrowserController } from "./browser"
 import { CaptureController } from "./capture/controller"
+import { ProxyController } from "./proxy/controller"
 import { WorkspaceStores } from "./capture/workspace-stores"
 import type { CaptureFilter, HttpSide, RepeaterRequest } from "./capture/types"
 import type { CanvasDoc, CanvasSummary, FindingSummary, NoteSummary } from "../preload/types"
@@ -104,6 +105,11 @@ export function registerIpcHandlers(deps: Deps) {
   const browserController = new BrowserController(userData)
   const captureController = new CaptureController(workspaceStores)
   captureController.attachTo(browserController)
+  // Intercepting proxy — feeds device/emulator traffic into the same capture pipeline.
+  const proxyController = new ProxyController(join(userData, "proxy-ca"), {
+    onRequest: (dir, ev) => captureController.ingestProxyRequest(dir, ev),
+    onResponse: (dir, ev) => captureController.ingestProxyResponse(dir, ev),
+  })
   app.once("will-quit", () => workspaceStores.dispose())
 
   // Load a workspace's PERSISTED captures (for restoring state on open).
@@ -217,6 +223,50 @@ export function registerIpcHandlers(deps: Deps) {
       event.sender.send("browser-status", status)
     })
     event.sender.once("destroyed", dispose)
+  })
+
+  // ── Intercepting proxy ──
+  ipcMain.handle("proxy-start", (_event: IpcMainInvokeEvent, projectDir: string, opts?: { host?: string; port?: number }) =>
+    proxyController.start(projectDir, opts),
+  )
+  ipcMain.handle("proxy-stop", (_event: IpcMainInvokeEvent, projectDir: string) => proxyController.stop(projectDir))
+  ipcMain.handle("proxy-status", (_event: IpcMainInvokeEvent, projectDir: string) => proxyController.status(projectDir))
+  ipcMain.handle("proxy-subscribe", (event, projectDir: string) => {
+    const dispose = proxyController.subscribe((dir, status) => {
+      if (dir !== projectDir) return
+      if (event.sender.isDestroyed()) {
+        dispose()
+        return
+      }
+      event.sender.send("proxy-status", status)
+    })
+    event.sender.once("destroyed", dispose)
+  })
+  // The LAN IPv4 addresses of this machine — the emulator points its proxy at one of these.
+  ipcMain.handle("proxy-lan-ips", (): string[] => {
+    const out: string[] = []
+    for (const addrs of Object.values(networkInterfaces())) {
+      for (const a of addrs ?? []) {
+        if (a.family === "IPv4" && !a.internal) out.push(a.address)
+      }
+    }
+    return out
+  })
+  // The CA cert (PEM) + its on-disk path — install this on the emulator to intercept HTTPS.
+  ipcMain.handle("proxy-ca-info", (): { path: string; pem: string } => ({
+    path: join(userData, "proxy-ca", "gaze-ca.crt"),
+    pem: proxyController.caCertPem(),
+  }))
+  ipcMain.handle("proxy-export-ca", async (): Promise<string | null> => {
+    const pem = proxyController.caCertPem()
+    const result = await dialog.showSaveDialog({
+      title: "Export GAZE proxy CA certificate",
+      defaultPath: "gaze-ca.crt",
+      filters: [{ name: "Certificate", extensions: ["crt", "pem", "cer"] }],
+    })
+    if (result.canceled || !result.filePath) return null
+    await writeFile(result.filePath, pem, "utf8")
+    return result.filePath
   })
 
   ipcMain.handle("capture-subscribe", (event) => {
