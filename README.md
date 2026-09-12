@@ -1,129 +1,216 @@
+<!--
+  📸 IMAGE PLACEHOLDERS
+  Every spot marked with "📸" below has a ready-to-use <img> tag commented out
+  underneath it. To add a picture: drop the file in docs/media/ using the name
+  shown, then delete the <!-- and --> around the matching <img> line.
+  See docs/media/README.md for the full list of suggested files.
+-->
+
+<h1 align="center">Gaze</h1>
+
 <p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
-  </a>
-</p>
-<p align="center">The open source AI coding agent.</p>
-<p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  <b>An agent-driven web application security workbench.</b><br>
+  Point it at an authorized target, browse, and Gaze turns live traffic into a living
+  map of the attack surface — then helps confirm real, exploitable findings.
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  <a href="#responsible-use">Authorized testing only</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#the-workbench">The workbench</a> ·
+  <a href="#project-status">Status</a>
 </p>
 
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
+<p align="center">
+  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-orange?style=flat-square">
+  <img alt="Desktop" src="https://img.shields.io/badge/desktop-Electron-informational?style=flat-square">
+  <img alt="Engine" src="https://img.shields.io/badge/engine-TypeScript%20(pure%20core)-3178c6?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
+</p>
+
+> 📸 **Demo** — a short screen capture of a full loop (launch scoped browser → traffic captured → the graph fills in → open a finding). Save it as `docs/media/demo.gif`.
+<!-- <p align="center"><img src="docs/media/demo.gif" alt="Gaze in action" width="840"></p> -->
 
 ---
 
-### Installation
+## Why Gaze
 
-```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
+Modern app security work is mostly a fight against **volume and context loss**. You
+proxy hundreds of requests, but the structure — which hosts, which endpoints, which
+parameters are enumerable, where a secret leaked, which trust boundary a value crossed —
+lives only in the tester's head. Classic tools (a proxy, a repeater, a wordlist) capture
+*traffic*; they don't capture *understanding*.
 
-# Package managers
-npm i -g opencode-ai@latest        # or bun/pnpm/yarn
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS and Linux (recommended, always up to date)
-brew install opencode              # macOS and Linux (official brew formula, updated less)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # Any OS
-nix run nixpkgs#opencode           # or github:anomalyco/opencode for latest dev branch
-```
+Gaze is an attempt to close that gap. It treats an engagement as a **graph that grows as
+you work**: every captured request, crawled link, analyzed script, and discovered
+parameter folds into one **security-property graph** of the target. On top of that graph
+sits an **AI agent** that can drive the same tooling a human does — crawl, discover,
+analyze, replay, and *confirm* candidate issues — while a hard **scope kernel** guarantees
+it never touches anything it wasn't authorized to.
 
-> [!TIP]
-> Remove versions older than 0.1.x before installing.
+The goals:
 
-### Desktop App (BETA)
-
-OpenCode is also available as a desktop application. Download directly from the [releases page](https://github.com/anomalyco/opencode/releases) or [opencode.ai/download](https://opencode.ai/download).
-
-| Platform              | Download                           |
-| --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
-| Linux                 | `.deb`, `.rpm`, or `.AppImage`     |
-
-```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
-```
-
-#### Installation Directory
-
-The install script respects the following priority order for the installation path:
-
-1. `$OPENCODE_INSTALL_DIR` - Custom installation directory
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification compliant path
-3. `$HOME/bin` - Standard user binary directory (if it exists or can be created)
-4. `$HOME/.opencode/bin` - Default fallback
-
-```bash
-# Examples
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
-```
-
-### Agents
-
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
-
-- **build** - Default, full-access agent for development work
-- **plan** - Read-only agent for analysis and code exploration
-  - Denies file edits by default
-  - Asks permission before running bash commands
-  - Ideal for exploring unfamiliar codebases or planning changes
-
-Also included is a **general** subagent for complex searches and multistep tasks.
-This is used internally and can be invoked using `@general` in messages.
-
-Learn more about [agents](https://opencode.ai/docs/agents).
-
-### Documentation
-
-For more info on how to configure OpenCode, [**head over to our docs**](https://opencode.ai/docs).
-
-### Contributing
-
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
-
-### Building on OpenCode
-
-If you are working on a project that's related to OpenCode and is using "opencode" as part of its name, for example "opencode-dashboard" or "opencode-mobile", please add a note to your README to clarify that it is not built by the OpenCode team and is not affiliated with us in any way.
+- **See the whole surface, not one request at a time.** Capture and recon continuously
+  build a single, navigable map.
+- **Confirm, don't guess.** Findings come from oracles that must produce evidence — the
+  design target is *no false positives*.
+- **Stay inside the lines.** Every outbound connection passes a deny-by-default scope
+  check first; this is the tool's ethical and legal boundary, not an afterthought.
+- **Let the agent do the tedious parts.** The human sets scope and intent; the agent runs
+  the breadth-first grind.
 
 ---
 
-**Join our community** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+## The workbench
+
+Gaze is a desktop app. The **Web** module is a set of tools that share one live capture
+and one graph, so a request you see in the Proxy is the same node you inspect in the Graph.
+
+### 🗺️ Graph — the living attack surface
+A tidy, real-time map of everything the target exposed: domains → paths → endpoints →
+resources, plus enriched layers (identities, parameters, tainted values, trust zones).
+Composable **lenses** and overlays let you switch what the map emphasizes; clicking a node
+opens every request behind it.
+
+> 📸 Save a screenshot as `docs/media/graph.png`.
+<!-- <p align="center"><img src="docs/media/graph.png" alt="Attack-surface graph" width="840"></p> -->
+
+### 🛰️ Proxy — full-fidelity capture log
+A Burp-style history of every observed request/response, unredacted: complete on-the-wire
+headers (cookies, authorization), decoded bodies, and the request **initiator** (the JS
+call stack that fired it). Capture works both from a launched, instrumented Chromium and
+from an intercepting HTTP(S) proxy for devices/emulators.
+
+> 📸 Save a screenshot as `docs/media/proxy.png`.
+<!-- <p align="center"><img src="docs/media/proxy.png" alt="Proxy log" width="840"></p> -->
+
+### 🔁 Repeater — hand-tune and replay
+Take any captured request into an editable raw editor, tweak it, and fire it back through
+the scoped runtime — every replay is recorded into the same log and graph.
+
+> 📸 Save a screenshot as `docs/media/repeater.png`.
+<!-- <p align="center"><img src="docs/media/repeater.png" alt="Repeater" width="840"></p> -->
+
+### 🎯 Findings — evidence, scoring, and reports
+Confirmed issues flow into a Findings dashboard with severity scoring, remediation
+guidance, and exportable HTML reports.
+
+> 📸 Save a screenshot as `docs/media/findings.png`.
+<!-- <p align="center"><img src="docs/media/findings.png" alt="Findings" width="840"></p> -->
+
+Also in the module: an **Overview** launcher (start a scoped engagement), a **Canvas**
+scratch surface, and the **Interceptor**.
+
+---
+
+## How it works
+
+The engine is `@morgana/web-core` — a **pure, headless, test-covered** TypeScript core
+that knows nothing about the UI. The desktop app (Electron) wires it to a real browser,
+a worker pool, and the agent.
+
+```
+            authorized scope
+                   │
+   ┌───────────────▼────────────────┐
+   │  ScopeGuard  (deny-by-default)  │  ← every outbound connection asks first
+   └───────────────┬────────────────┘
+                   │
+        ┌──────────▼──────────┐        ┌───────────────────────────┐
+        │  Collectors          │        │  Scheduler                │
+        │  capture · crawl ·   │◄──────►│  per-host rate + concurr. │
+        │  content/param disc. │        │  politeness & WAF-survival│
+        │  JS/HTML analysis ·  │        └───────────────────────────┘
+        │  API/GraphQL import ·│
+        │  subdomain-takeover  │
+        └──────────┬───────────┘
+                   │ Observation deltas (endpoint·param·asset·service·cert·js·secret·takeover)
+        ┌──────────▼───────────┐
+        │  Security-Property    │  one incremental graph the UI *and* the agent read
+        │  Graph  (fold + taint)│  identities · parameters · tainted values · trust zones
+        └──────────┬───────────┘
+                   │ candidates (IDOR · enumeration · SSRF · reflected-XSS · info-leak · race · logic)
+        ┌──────────▼───────────┐
+        │  Oracles              │  confirm(candidate) → evidence  (no evidence ⇒ no finding)
+        └──────────┬───────────┘
+                   │
+             Findings → scoring → report
+```
+
+Five **seams** carry the whole design (`web-core/collect`):
+
+1. **ScopeGuard** — the egress security kernel. Host globs, CIDRs, port allow-lists, and
+   `denyPrivate` (blocks RFC1918/loopback/link-local incl. cloud metadata). In the Node
+   runtime it also resolves + **pins the IP** and re-checks on every redirect hop
+   (SSRF / DNS-rebinding defense).
+2. **Scheduler** — the single owner of all outbound work: per-host token bucket +
+   concurrency caps + priority queue + cancellation. One knob for both politeness and
+   surviving WAFs.
+3. **Collectors** — surface producers (capture, crawler, content/param discovery, static
+   JS/HTML analysis, API/GraphQL schema import, subdomain-takeover). They emit incremental
+   `Observation` deltas — nothing re-materializes.
+4. **Oracles** — finding confirmers (differential-replay, race-condition, business-logic).
+   Each must return evidence or `null`; the bar is **no false positives**.
+5. **foldObservation** — idempotent merge of observations into the security-property graph,
+   so the agent and the UI always see one attack surface.
+
+**Process model:** the Node main process owns the DNS-pinned HTTP runtime and scheduler;
+CPU-heavy and untrusted parsing (JS/HTML ASTs, wordlists) runs in **network-less worker
+processes** — the target's code is *parsed, never executed*; the agent drives everything
+through tools (`web_crawl`, `web_discover_content`, `web_analyze_js`, `web_race`,
+`web_scenario_run`, `recon_takeover_check`, …).
+
+---
+
+## Responsible use
+
+Gaze is for **authorized security testing only** — your own systems, or targets you have
+explicit written permission to test (e.g. an in-scope bug-bounty program). The safety
+model is built into the architecture, not bolted on:
+
+- **Deny-by-default egress.** No module can open a connection except through a client that
+  passes `ScopeGuard.assert()` first. Every active run requires a defined scope.
+- **Secrets never enter the graph.** Producers emit a *fingerprint reference*, never the
+  value; credentials used for auth testing are encrypted at rest and redacted from
+  captures and reports.
+- **Never execute target code.** JS/asset analysis is static-parse-only, inside workers
+  with no network handle.
+
+You are responsible for ensuring you have authorization for any target you point it at.
+
+---
+
+## Tech stack
+
+- **Engine** — TypeScript, pure/headless (`@morgana/web-core`), extensively unit-tested.
+- **Desktop** — Electron; live capture over the Chrome DevTools Protocol + an intercepting
+  HTTP(S) proxy.
+- **UI** — SolidJS renderer (graph on a canvas force layout, Burp-style HTTP viewer).
+- **Agent** — the OpenCode agent runtime, driving the security tools over MCP.
+
+---
+
+## Project status
+
+**Active development.** The engine foundation is landed and covered by tests — the scope
+kernel, scheduler, collectors (crawler, content/param discovery, JS/HTML analysis,
+API-schema import, subdomain-takeover), the differential-replay / race / business-logic
+oracles, and the enriched + taint graph layers all live headless with fixture tests. The
+desktop workbench (capture, Graph, Proxy, Repeater, Findings) is wired on top. Some pieces
+noted in the design docs are still in progress or intentionally deferred (e.g. OAST /
+out-of-band, watch mode). Design docs live in [`packages/web-core/docs`](packages/web-core/docs).
+
+---
+
+## Built on OpenCode
+
+Gaze is a fork of [**OpenCode**](https://opencode.ai) (MIT) — it reuses
+OpenCode's agent runtime and desktop shell as the foundation and adds the `@morgana/web-core`
+security engine and the Web workbench on top. Full credit to the OpenCode authors; the
+original project READMEs (English + translations) are preserved under
+[`docs/opencode-readme-translations/`](docs/opencode-readme-translations/).
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Original OpenCode copyright is retained; additions in this
+fork are © their respective author.
