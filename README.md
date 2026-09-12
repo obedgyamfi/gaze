@@ -6,19 +6,14 @@
   map of the attack surface — then helps confirm real, exploitable findings.
 </p>
 
-<!--
-  Add a short demo GIF as docs/media/demo.gif (a ~15s loop: launch scoped browser →
-  traffic captured → the attack-surface graph fills in → open a finding), then remove
-  the <!-- and --> around the line below to show it.
--->
-<!-- <p align="center"><img src="docs/media/demo.gif" alt="Gaze in action" width="860"></p> -->
-
 <p align="center">
   <img alt="Status" src="https://img.shields.io/badge/status-active%20development-orange?style=flat-square">
   <img alt="Desktop" src="https://img.shields.io/badge/desktop-Electron-informational?style=flat-square">
   <img alt="Engine" src="https://img.shields.io/badge/engine-TypeScript%20(pure%20core)-3178c6?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
 </p>
+
+<img width="1918" height="1030" alt="gaze_demo" src="https://github.com/user-attachments/assets/9c0bba33-0a22-42c0-8b3c-19a71fecbbfb" />
 
 ---
 
